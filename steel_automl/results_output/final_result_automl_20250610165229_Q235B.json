@@ -1,0 +1,2914 @@
+{
+    "status": "success",
+    "user_request": {
+        "user_request": "建立一个预测Q235B牌号H033机组抗拉强度TS_N的模型，数据时间范围是2024年1月1日到2025年1月1日，使用随机森林算法，不需要进行异常数据的判别和处理。",
+        "sg_sign": "Q235B",
+        "target_metric": "TS_N",
+        "time_range": "20240101-20250501",
+        "product_unit_no": "H033"
+    },
+    "pipeline_run_id": "automl_20250610165229_Q235B",
+    "modeling_start_time": "2025-06-10T16:52:29.690655",
+    "modeling_end_time": "2025-06-10T16:57:07.689239",
+    "modeling_duration_seconds": 277.998584,
+    "selected_model": {
+        "model_name": "RandomForestRegressor",
+        "best_hyperparameters": {
+            "max_depth": 10,
+            "min_samples_leaf": 1,
+            "min_samples_split": 2,
+            "n_estimators": 100
+        },
+        "model_object_reference": "Not explicitly saved in this version"
+    },
+    "evaluation_metrics": {
+        "mse": 145.87386294672424,
+        "rmse": 12.077825257335206,
+        "r2": 0.6147459293894817
+    },
+    "feature_importances_top10": {
+        "TOP_YS_N": 0.1466877549804701,
+        "ELM_C ELM_MN": 0.14183927810329397,
+        "YP_JUDGE": 0.13441900976320176,
+        "CEQ_calculated": 0.10565355010500688,
+        "ELM_C ROUGH_TEMP_AVE": 0.03019485818021939,
+        "AGT_EL_N": 0.02779495643426308,
+        "FM_TEMP_MIN": 0.01617563413648562,
+        "ELM_SI_SLAB": 0.01588593436104573,
+        "DISCH_TEMP": 0.01376402457652309,
+        "ORDER_WT": 0.013621500626599921
+    },
+    "pipeline_stages_summary": [
+        {
+            "stage_name": "data_acquisition",
+            "timestamp": "2025-06-10T16:52:33.803649",
+            "status": "success",
+            "details": {
+                "rows_fetched": 285,
+                "columns": [
+                    "MAT_NO",
+                    "SIGN_CODE",
+                    "SIGN_LINE_NO",
+                    "ST_NO",
+                    "PONO",
+                    "TEST_COUNT",
+                    "SAMPLE_POS_CODE",
+                    "PRODUCT_UNIT_NO",
+                    "THICK_ZN",
+                    "TENSILE_DIRECT",
+                    "BOT_YS_N",
+                    "TOP_YS_N",
+                    "RP02_N",
+                    "YP_JUDGE",
+                    "YS_EL_N",
+                    "TS_N",
+                    "BREAK_EL_N",
+                    "AGT_EL_N",
+                    "R_VALUE_0_N",
+                    "R_VALUE_45_N",
+                    "R_VALUE_90_N",
+                    "R_VALUE_AVG_N",
+                    "DELTA_R_N",
+                    "N_VALUE_0_N",
+                    "N_VALUE_45_N",
+                    "N_VALUE_90_N",
+                    "N_VALUE_AVG_N",
+                    "BOT_YS_N_2",
+                    "TOP_YS_N_2",
+                    "RP02_N_2",
+                    "YS_EL_N_2",
+                    "TS_N_2",
+                    "BREAK_EL_N_2",
+                    "AGT_EL_N_2",
+                    "BOT_YS_N_3",
+                    "TOP_YS_N_3",
+                    "RP02_N_3",
+                    "YS_EL_N_3",
+                    "TS_N_3",
+                    "BREAK_EL_N_3",
+                    "AGT_EL_N_3",
+                    "N_VALUE_0_N_2",
+                    "N_VALUE_45_N_2",
+                    "N_VALUE_90_N_2",
+                    "N_VALUE_AVG_N_2",
+                    "TOAST_HARDNESS",
+                    "HARD_TEST_TYPE",
+                    "HARDNESS_D_N",
+                    "HARDNESS_C_N",
+                    "HARDNESS_W_N",
+                    "HARDNESS_A_N",
+                    "EXPAND_HOLE_D",
+                    "EXPAND_HOLE_C",
+                    "EXPAND_HOLE_W",
+                    "EXPAND_HOLE_A",
+                    "AGING_INDEX",
+                    "GHOSTY",
+                    "BEND_L",
+                    "BEND_C",
+                    "SPHR_RATIO_C",
+                    "SPHR_RATIO_GRADE_C",
+                    "CARB_SIZE_C",
+                    "SPHR_RATIO_L",
+                    "SPHR_RATIO_GRADE_L",
+                    "CARB_SIZE_L",
+                    "TOP_DECARB_THICK",
+                    "BOT_DECARB_THICK",
+                    "REC_REVISE_TIME",
+                    "MAT_TRACK_NO",
+                    "SAMPLE_ORDER_NO",
+                    "SLAB_NO",
+                    "SM_UNIT_NO",
+                    "SM_PRODTIME",
+                    "HR_COIL_NO",
+                    "HR_UNIT_NO",
+                    "HR_PRODTIME",
+                    "HR_ORDER_NO",
+                    "CDCM_COIL_NO",
+                    "CDCM_UNIT_NO",
+                    "CDCM_PRODTIME",
+                    "ANN_IN_COIL_NO",
+                    "ANN_OUT_COIL_NO",
+                    "ANN_UNIT_NO",
+                    "ANN_PRODTIME",
+                    "ETL_COIL_NO",
+                    "ETL_UNIT_NO",
+                    "ETL_PRODTIME",
+                    "SG_STD",
+                    "STD_VERSION",
+                    "SG_SIGN",
+                    "ORDER_THICK",
+                    "PROD_THICK",
+                    "ORDER_WIDTH",
+                    "PROD_WIDTH",
+                    "ORDER_LEN_MIN",
+                    "PROD_LEN",
+                    "ORDER_WT",
+                    "PSR",
+                    "MIC",
+                    "FIN_CUST_CODE",
+                    "FIN_USER_NAME",
+                    "APN",
+                    "APN_DESC",
+                    "SORT_GRADE_CODE_F",
+                    "DELIVERY_DATE_IN",
+                    "TEST_DIRECT_CODE",
+                    "EL_GAUGE_CODE",
+                    "SAMPLE_SHAPE_CODE",
+                    "YS_TYPE_CODE",
+                    "YS_MIN",
+                    "YS_MAX",
+                    "YS_EL_MAX",
+                    "TS_MIN",
+                    "TS_MAX",
+                    "BREAK_EL_MIN",
+                    "BREAK_EL_MAX",
+                    "MEASURE_METHOD_R",
+                    "R_VALUE_0_MIN",
+                    "R_VALUE_0_MAX",
+                    "R_VALUE_45_MIN",
+                    "R_VALUE_45_MAX",
+                    "R_VALUE_90_MIN",
+                    "R_VALUE_90_MAX",
+                    "R_VALUE_AVER_MIN",
+                    "R_VALUE_AVER_MAX",
+                    "DELTA_R_MAX",
+                    "MEASURE_RANGE_N",
+                    "N_VALUE_0_MIN",
+                    "N_VALUE_0_MAX",
+                    "N_VALUE_45_MIN",
+                    "N_VALUE_45_MAX",
+                    "N_VALUE_90_MIN",
+                    "N_VALUE_90_MAX",
+                    "N_VALUE_AVER_MIN",
+                    "N_VALUE_AVER_MAX",
+                    "TOAST_HARDNESS_TEST_METHOD",
+                    "HARDNESS_OVEN_MIN",
+                    "HARDNESS_OVEN_MAX",
+                    "AGING_AI_MAX",
+                    "TEST_DIRECT_CODE_2",
+                    "YS_MIN2",
+                    "YS_MAX2",
+                    "YS_EL_MAX2",
+                    "TS_MIN2",
+                    "TS_MAX2",
+                    "BREAK_EL_MIN2",
+                    "BREAK_EL_MAX2",
+                    "TEST_DIRECT_CODE_3",
+                    "YS_MIN3",
+                    "YS_MAX3",
+                    "YS_EL_MAX3",
+                    "TS_MIN3",
+                    "TS_MAX3",
+                    "BREAK_EL_MIN3",
+                    "BREAK_EL_MAX3",
+                    "MEASURE_RANGE_N_2",
+                    "N_VALUE_0_MIN_2",
+                    "N_VALUE_0_MAX_2",
+                    "N_VALUE_45_MIN_2",
+                    "N_VALUE_45_MAX_2",
+                    "N_VALUE_90_MIN_2",
+                    "N_VALUE_90_MAX_2",
+                    "N_VALUE_AVER_MIN_2",
+                    "N_VALUE_AVER_MAX_2",
+                    "BEND_ANGLE",
+                    "BEND_DIA",
+                    "BEND_WIDTH",
+                    "BEND_RESULT",
+                    "HARDNESS_MEASURE_METHOD",
+                    "HARDNESS_MIN",
+                    "HARDNESS_MAX",
+                    "EXPAND_HOLE_METHOD",
+                    "EXPAND_HOLE_MIN",
+                    "EXPAND_HOLE_MAX",
+                    "SPHR_RATIO_METHOD",
+                    "SPHR_RATIO_MIN_C",
+                    "SPHR_RATIO_MIN_L",
+                    "SPHR_RATIO_GRADE_MIN_C",
+                    "SPHR_RATIO_GRADE_MIN_L",
+                    "CARB_SIZE_MIN_C",
+                    "CARB_SIZE_MIN_L",
+                    "TOP_DECARB_THICK_MAX",
+                    "BOT_DECARB_THICK_MAX",
+                    "TOP_DECARB_THICK_PROP_MAX",
+                    "BOT_DECARB_THICK_PROP_MAX",
+                    "GHOSTY_TEST_METHOD",
+                    "GHOST_GRADE",
+                    "ELM_C",
+                    "ELM_SI",
+                    "ELM_MN",
+                    "ELM_P",
+                    "ELM_S",
+                    "ELM_AL",
+                    "ELM_NB",
+                    "ELM_TI",
+                    "ELM_B",
+                    "ELM_CU",
+                    "ELM_NI",
+                    "ELM_CR",
+                    "ELM_MO",
+                    "ELM_V",
+                    "ELM_N",
+                    "ELM_O",
+                    "ELM_H",
+                    "EXCESS_C",
+                    "SLAB_PLACE_CODE",
+                    "CC_NO",
+                    "CAST_NO",
+                    "TD_NO",
+                    "PREV_HEAT_ST_NO",
+                    "NEXT_HEAT_ST_NO",
+                    "DESIGN_DISCH_TEMP_AIM",
+                    "DESIGN_DISCH_TEMP_MIN",
+                    "DESIGN_DISCH_TEMP_MAX",
+                    "DESIGN_FM_TEMP_AIM",
+                    "DESIGN_FM_TEMP_MIN",
+                    "DESIGN_FM_TEMP_MAX",
+                    "DESIGN_CT_TEMP_AIM",
+                    "DESIGN_CT_TEMP_MIN",
+                    "DESIGN_CT_TEMP_MAX",
+                    "DESIGN_LAY_COLD_MODE",
+                    "DESIGN_ANNEAL_DIAGRAM_CODE",
+                    "DESIGN_TPM_RATE_AIM_OLD",
+                    "DESIGN_TPM_RATE_MIN_OLD",
+                    "DESIGN_TPM_RATE_MAX_OLD",
+                    "DESIGN_RTF_TEMP_AIM",
+                    "DESIGN_RTF_TEMP_MIN",
+                    "DESIGN_RTF_TEMP_MAX",
+                    "DESIGN_SF_TEMP_AIM",
+                    "DESIGN_SF_TEMP_MIN",
+                    "DESIGN_SF_TEMP_MAX",
+                    "DESIGN_SCS_TEMP_AIM",
+                    "DESIGN_SCS_TEMP_MIN",
+                    "DESIGN_SCS_TEMP_MAX",
+                    "DESIGN_RCS_TEMP_AIM",
+                    "DESIGN_RCS_TEMP_MIN",
+                    "DESIGN_RCS_TEMP_MAX",
+                    "DESIGN_OAS_TEMP_AIM",
+                    "DESIGN_OAS_TEMP_MIN",
+                    "DESIGN_OAS_TEMP_MAX",
+                    "HR_PLAN_NO",
+                    "FUR_NO_HR",
+                    "CHARGE_TEMP",
+                    "DISCH_TEMP",
+                    "IN_FURNACE_TIME",
+                    "ROUGH_TEMP_AVE",
+                    "ROUGH_TEMP_MAX",
+                    "ROUGH_TEMP_MIN",
+                    "FM_TEMP_AVE",
+                    "FM_TEMP_MAX",
+                    "FM_TEMP_MIN",
+                    "CT_TEMP_AVE",
+                    "CT_TEMP_MAX",
+                    "CT_TEMP_MIN",
+                    "ANNEAL_PLAN_NO",
+                    "ANNEAL_DIAGRAM_CODE",
+                    "SPEED_ANN_AVE",
+                    "SPEED_ANN_MAX",
+                    "SPEED_ANN_MIN",
+                    "HS_TEMP_ANN_AVE",
+                    "HS_TEMP_ANN_MAX",
+                    "HS_TEMP_ANN_MIN",
+                    "RTF_TEMP_ANN_AVE",
+                    "RTF_TEMP_ANN_MAX",
+                    "RTF_TEMP_ANN_MIN",
+                    "SF_TEMP_ANN_AVE",
+                    "SF_TEMP_ANN_MAX",
+                    "SF_TEMP_ANN_MIN",
+                    "SCS_TEMP_ANN_AVE",
+                    "SCS_TEMP_ANN_MAX",
+                    "SCS_TEMP_ANN_MIN",
+                    "RCS_MID_TEMP_ANN_AVE",
+                    "RCS_MID_TEMP_ANN_MAX",
+                    "RCS_MID_TEMP_ANN_MIN",
+                    "RCS_TEMP_ANN_AVE",
+                    "RCS_TEMP_ANN_MAX",
+                    "RCS_TEMP_ANN_MIN",
+                    "OAS_TEMP_ANN_AVE",
+                    "OAS_TEMP_ANN_MAX",
+                    "OAS_TEMP_ANN_MIN",
+                    "RHS_TEMP_ANN_AVE",
+                    "RHS_TEMP_ANN_MAX",
+                    "RHS_TEMP_ANN_MIN",
+                    "SNOUT_TEMP_CGL_AVE",
+                    "SNOUT_TEMP_CGL_MAX",
+                    "SNOUT_TEMP_CGL_MIN",
+                    "TPM_RATE_AVE",
+                    "TPM_RATE_MAX",
+                    "TPM_RATE_MIN",
+                    "TPM_FORCE",
+                    "TPM_TEN_FRONT",
+                    "TPM_TEN_BACK",
+                    "TEN_RATE_AVE",
+                    "TEN_RATE_MAX",
+                    "TEN_RATE_MIN",
+                    "SAMP_ROUGH_TEMP_AVE",
+                    "SAMP_ROUGH_TEMP_MAX",
+                    "SAMP_ROUGH_TEMP_MIN",
+                    "SAMP_ROUGH_TEMP_RANGE",
+                    "SAMP_FM_TEMP_AVE",
+                    "SAMP_FM_TEMP_MAX",
+                    "SAMP_FM_TEMP_MIN",
+                    "SAMP_FM_TEMP_RANGE",
+                    "SAMP_CT_TEMP_AVE",
+                    "SAMP_CT_TEMP_MAX",
+                    "SAMP_CT_TEMP_MIN",
+                    "SAMP_CT_TEMP_RANGE",
+                    "SAMP_SPEED_ANN_AVE",
+                    "SAMP_SPEED_ANN_MAX",
+                    "SAMP_SPEED_ANN_MIN",
+                    "SAMP_SPEED_ANN_RANGE",
+                    "SAMP_HS_TEMP_ANN_AVE",
+                    "SAMP_HS_TEMP_ANN_MAX",
+                    "SAMP_HS_TEMP_ANN_MIN",
+                    "SAMP_HS_TEMP_ANN_RANGE",
+                    "SAMP_RTF_TEMP_ANN_AVE",
+                    "SAMP_RTF_TEMP_ANN_MAX",
+                    "SAMP_RTF_TEMP_ANN_MIN",
+                    "SAMP_RTF_TEMP_ANN_RANGE",
+                    "SAMP_SF_TEMP_ANN_AVE",
+                    "SAMP_SF_TEMP_ANN_MAX",
+                    "SAMP_SF_TEMP_ANN_MIN",
+                    "SAMP_SF_TEMP_ANN_RANGE",
+                    "SAMP_SCS_TEMP_ANN_AVE",
+                    "SAMP_SCS_TEMP_ANN_MAX",
+                    "SAMP_SCS_TEMP_ANN_MIN",
+                    "SAMP_SCS_TEMP_ANN_RANGE",
+                    "SAMP_RCS_MID_TEMP_ANN_AVE",
+                    "SAMP_RCS_MID_TEMP_ANN_MAX",
+                    "SAMP_RCS_MID_TEMP_ANN_MIN",
+                    "SAMP_RCS_MID_TEMP_ANN_RANGE",
+                    "SAMP_RCS_TEMP_ANN_AVE",
+                    "SAMP_RCS_TEMP_ANN_MAX",
+                    "SAMP_RCS_TEMP_ANN_MIN",
+                    "SAMP_RCS_TEMP_ANN_RANGE",
+                    "SAMP_OAS_TEMP_ANN_AVE",
+                    "SAMP_OAS_TEMP_ANN_MAX",
+                    "SAMP_OAS_TEMP_ANN_MIN",
+                    "SAMP_OAS_TEMP_ANN_RANGE",
+                    "SAMP_RHS_TEMP_ANN_AVE",
+                    "SAMP_RHS_TEMP_ANN_MAX",
+                    "SAMP_RHS_TEMP_ANN_MIN",
+                    "SAMP_RHS_TEMP_ANN_RANGE",
+                    "SAMP_SNOUT_TEMP_CGL_AVE",
+                    "SAMP_SNOUT_TEMP_CGL_MAX",
+                    "SAMP_SNOUT_TEMP_CGL_MIN",
+                    "SAMP_SNOUT_TEMP_CGL_RANGE",
+                    "SAMP_TPM_RATE_AVE",
+                    "SAMP_TPM_RATE_MAX",
+                    "SAMP_TPM_RATE_MIN",
+                    "SAMP_TPM_RATE_RANGE",
+                    "SAMP_TPM_FORCE_AVE",
+                    "SAMP_TPM_FORCE_MAX",
+                    "SAMP_TPM_FORCE_MIN",
+                    "SAMP_TPM_FORCE_RANGE",
+                    "SAMP_TPM_TEN_FRONT_AVE",
+                    "SAMP_TPM_TEN_FRONT_MAX",
+                    "SAMP_TPM_TEN_FRONT_MIN",
+                    "SAMP_TPM_TEN_FRONT_RANGE",
+                    "SAMP_TPM_TEN_BACK_AVE",
+                    "SAMP_TPM_TEN_BACK_MAX",
+                    "SAMP_TPM_TEN_BACK_MIN",
+                    "SAMP_TPM_TEN_BACK_RANGE",
+                    "SAMP_TEN_RATE_AVE",
+                    "SAMP_TEN_RATE_MAX",
+                    "SAMP_TEN_RATE_MIN",
+                    "SAMP_TEN_RATE_RANGE",
+                    "DEFORMATION_RATE",
+                    "HR_THICK",
+                    "CDCM_THICK",
+                    "PREC_ST_NO",
+                    "FIN_ST_NO",
+                    "SP_EXIT_MAT_NO",
+                    "DESIGN_TPM_RATE_AIM",
+                    "DESIGN_TPM_RATE_MIN",
+                    "DESIGN_TPM_RATE_MAX",
+                    "HR_START_POS",
+                    "HR_END_POS",
+                    "CR_START_POS",
+                    "CR_END_POS",
+                    "SOCKET_NO_BAF",
+                    "RTF_FUR_TEMP_ANN",
+                    "SF_FUR_TEMP_ANN",
+                    "RTF_DEW_POINT_ANN",
+                    "SF_DEW_POINT_ANN",
+                    "SCRAP_LEN_HEAD_ANN",
+                    "SCRAP_LEN_TAIL_ANN",
+                    "YP_ONLINE",
+                    "TS_ONLINE",
+                    "EL_ONLINE",
+                    "YPEL_ONLINE",
+                    "BH_ONLINE",
+                    "R_ONLINE",
+                    "N_ONLINE",
+                    "IMPACT_ENEG_1",
+                    "IMPACT_ENEG_2",
+                    "IMPACT_ENEG_3",
+                    "IMPACT_ENEG_A",
+                    "IMPACT_AVER_MIN",
+                    "IMPACT_SINGLE_MIN",
+                    "REANNEAL_COUNT",
+                    "PRODUCT_FLAG",
+                    "DC_AN_HC10_300",
+                    "DC_HC10_300",
+                    "OAS_MID_TEMP_ANN_AVG",
+                    "OAS_MID_TEMP_ANN_MAX",
+                    "OAS_MID_TEMP_ANN_MIN",
+                    "SAMP_OAS_MID_TEMP_ANN_AVG",
+                    "SAMP_OAS_MID_TEMP_ANN_MAX",
+                    "SAMP_OAS_MID_TEMP_ANN_MIN",
+                    "SAMP_OAS_MID_TEMP_ANN_RANGE",
+                    "RT05_N",
+                    "DC_BM_8",
+                    "DC_BM_10",
+                    "DC_BM_50",
+                    "DC_BM_100",
+                    "YP_PREDICT",
+                    "YP_JUDGE_PREDICT",
+                    "TS_PREDICT",
+                    "EL_PREDICT",
+                    "YPEL_PREDICT",
+                    "BH_PREDICT",
+                    "R90_PREDICT",
+                    "N90_PREDICT",
+                    "R0_PREDICT",
+                    "N0_PREDICT",
+                    "R45_PREDICT",
+                    "N45_PREDICT",
+                    "RBAR_PREDICT",
+                    "NBAR_PREDICT",
+                    "IMPACT_PREDICT",
+                    "DESIGN_SOURCE_HR",
+                    "BOND_RESULT_INFO_HR",
+                    "DESIGN_SOURCE_ANN",
+                    "BOND_RESULT_INFO_ANN",
+                    "CONT_H2_SF",
+                    "CONT_H2_SCS",
+                    "CONT_H2_RCS",
+                    "EARING_RATE",
+                    "BENDING_D",
+                    "BENDING_C",
+                    "BENDING_W",
+                    "BENDING_A",
+                    "ITEM_INC",
+                    "A_CORS_TY_ASTM",
+                    "A_GOOD_TY_ASTM",
+                    "B_CORS_TY_ASTM",
+                    "B_GOOD_TY_ASTM",
+                    "C_CORS_TY_ASTM",
+                    "C_GOOD_TY_ASTM",
+                    "D_CORS_TY_ASTM",
+                    "D_GOOD_TY_ASTM",
+                    "TOP_ROUGH_D",
+                    "TOP_ROUGH_C",
+                    "TOP_ROUGH_W",
+                    "TOP_ROUGH_A",
+                    "BOT_ROUGH_D",
+                    "BOT_ROUGH_C",
+                    "BOT_ROUGH_W",
+                    "BOT_ROUGH_A",
+                    "TOP_PPI_D",
+                    "TOP_PPI_C",
+                    "TOP_PPI_W",
+                    "TOP_PPI_A",
+                    "BOT_PPI_D",
+                    "BOT_PPI_C",
+                    "BOT_PPI_W",
+                    "BOT_PPI_A",
+                    "TOP_WCA_D",
+                    "TOP_WCA_C",
+                    "TOP_WCA_W",
+                    "TOP_WCA_A",
+                    "BOT_WCA_D",
+                    "BOT_WCA_C",
+                    "BOT_WCA_W",
+                    "BOT_WCA_A",
+                    "ELM_CA_ACT",
+                    "ELM_SN_ACT",
+                    "ELM_AS_ACT",
+                    "ELM_SB_ACT",
+                    "ELM_PB_ACT",
+                    "TPM_WORK_ROLL_DIA",
+                    "TPM_ROLL_ROUGH_TOP",
+                    "TPM_ROLL_ROUGH_BOT",
+                    "TOP_PLATE_WT_D",
+                    "TOP_PLATE_WT_C",
+                    "TOP_PLATE_WT_W",
+                    "TOP_PLATE_WT_A",
+                    "BOT_PLATE_WT_D",
+                    "BOT_PLATE_WT_C",
+                    "BOT_PLATE_WT_W",
+                    "BOT_PLATE_WT_A",
+                    "CHAR_ELM_NAME",
+                    "TOP_CHAR_ELM_WT_D",
+                    "TOP_CHAR_ELM_WT_C",
+                    "TOP_CHAR_ELM_WT_W",
+                    "TOP_CHAR_ELM_WT_A",
+                    "BOT_CHAR_ELM_WT_D",
+                    "BOT_CHAR_ELM_WT_C",
+                    "BOT_CHAR_ELM_WT_W",
+                    "BOT_CHAR_ELM_WT_A",
+                    "TOP_P_FILM_WT_D",
+                    "TOP_P_FILM_WT_C",
+                    "TOP_P_FILM_WT_W",
+                    "TOP_P_FILM_WT_A",
+                    "BOT_P_FILM_WT_D",
+                    "BOT_P_FILM_WT_C",
+                    "BOT_P_FILM_WT_W",
+                    "BOT_P_FILM_WT_A",
+                    "TOP_FE_D",
+                    "TOP_FE_C",
+                    "TOP_FE_W",
+                    "TOP_FE_A",
+                    "BOT_FE_D",
+                    "BOT_FE_C",
+                    "BOT_FE_W",
+                    "BOT_FE_A",
+                    "TOP_POWDER_D",
+                    "TOP_POWDER_C",
+                    "TOP_POWDER_W",
+                    "TOP_POWDER_A",
+                    "BOT_POWDER_D",
+                    "BOT_POWDER_C",
+                    "BOT_POWDER_W",
+                    "BOT_POWDER_A",
+                    "TOP_POWDER_WIDTH_D",
+                    "TOP_POWDER_WIDTH_C",
+                    "TOP_POWDER_WIDTH_W",
+                    "TOP_POWDER_WIDTH_A",
+                    "BOT_POWDER_WIDTH_D",
+                    "BOT_POWDER_WIDTH_C",
+                    "BOT_POWDER_WIDTH_W",
+                    "BOT_POWDER_WIDTH_A",
+                    "TOP_UF_FILM_D",
+                    "TOP_UF_FILM_C",
+                    "TOP_UF_FILM_W",
+                    "TOP_UF_FILM_A",
+                    "BOT_UF_FILM_D",
+                    "BOT_UF_FILM_C",
+                    "BOT_UF_FILM_W",
+                    "BOT_UF_FILM_A",
+                    "TOP_ROUGH_RZ_D",
+                    "TOP_ROUGH_RZ_C",
+                    "TOP_ROUGH_RZ_W",
+                    "TOP_ROUGH_RZ_A",
+                    "BOT_ROUGH_RZ_D",
+                    "BOT_ROUGH_RZ_C",
+                    "BOT_ROUGH_RZ_W",
+                    "BOT_ROUGH_RZ_A",
+                    "TOP_ROUGH_RZ_MAX_D",
+                    "TOP_ROUGH_RZ_MAX_C",
+                    "TOP_ROUGH_RZ_MAX_W",
+                    "TOP_ROUGH_RZ_MAX_A",
+                    "BOT_ROUGH_RZ_MAX_D",
+                    "BOT_ROUGH_RZ_MAX_C",
+                    "BOT_ROUGH_RZ_MAX_W",
+                    "BOT_ROUGH_RZ_MAX_A",
+                    "TOP_ROUGH_RSK_D",
+                    "TOP_ROUGH_RSK_C",
+                    "TOP_ROUGH_RSK_W",
+                    "TOP_ROUGH_RSK_A",
+                    "BOT_ROUGH_RSK_D",
+                    "BOT_ROUGH_RSK_C",
+                    "BOT_ROUGH_RSK_W",
+                    "BOT_ROUGH_RSK_A",
+                    "TOP_ROUGH_RSM_D",
+                    "TOP_ROUGH_RSM_C",
+                    "TOP_ROUGH_RSM_W",
+                    "TOP_ROUGH_RSM_A",
+                    "BOT_ROUGH_RSM_D",
+                    "BOT_ROUGH_RSM_C",
+                    "BOT_ROUGH_RSM_W",
+                    "BOT_ROUGH_RSM_A",
+                    "ROUGH_MEASURE_METHOD",
+                    "TOP_ROUGH_MIN",
+                    "TOP_ROUGH_MAX",
+                    "BOT_ROUGH_MIN",
+                    "BOT_ROUGH_MAX",
+                    "PPI_MIN",
+                    "PPI_MAX",
+                    "WCA_TEST_METHOD",
+                    "WCA_MIN",
+                    "WCA_MAX",
+                    "ROUGH_RZ_MIN",
+                    "ROUGH_RZ_MAX",
+                    "ROUGH_RZMAX_MIN",
+                    "ROUGH_RZMAX_MAX",
+                    "ROUGH_RSK_MIN",
+                    "ROUGH_RSK_MAX",
+                    "ROUGH_RSM_MIN",
+                    "ROUGH_RSM_MAX",
+                    "ELM_C_SLAB",
+                    "ELM_SI_SLAB",
+                    "ELM_MN_SLAB",
+                    "ELM_P_SLAB",
+                    "ELM_S_SLAB",
+                    "ELM_ALT_SLAB",
+                    "ELM_NB_SLAB",
+                    "ELM_TI_SLAB",
+                    "ELM_V_SLAB",
+                    "ELM_CU_SLAB",
+                    "ELM_NI_SLAB",
+                    "ELM_CR_SLAB",
+                    "ELM_MO_SLAB",
+                    "ELM_B_SLAB",
+                    "ELM_N_SLAB",
+                    "ELM_O_SLAB",
+                    "ELM_H_SLAB",
+                    "EXCESS_C_SLAB",
+                    "ELM_CA_SLAB",
+                    "ELM_SN_SLAB",
+                    "ELM_AS_SLAB",
+                    "ELM_SB_SLAB",
+                    "ELM_PB_SLAB"
+                ]
+            },
+            "artifacts": {}
+        },
+        {
+            "stage_name": "data_preprocessing",
+            "timestamp": "2025-06-10T16:55:28.705586",
+            "status": "success",
+            "details": {
+                "steps_details": [
+                    {
+                        "step": "替换空白和null字符串为NaN。",
+                        "status": "success"
+                    },
+                    {
+                        "step": "删除常量列或空列。",
+                        "status": "success",
+                        "removed_columns": [
+                            "SIGN_LINE_NO",
+                            "TEST_COUNT",
+                            "SAMPLE_POS_CODE",
+                            "PRODUCT_UNIT_NO",
+                            "TENSILE_DIRECT",
+                            "BOT_YS_N",
+                            "RP02_N",
+                            "R_VALUE_0_N",
+                            "R_VALUE_45_N",
+                            "R_VALUE_90_N",
+                            "R_VALUE_AVG_N",
+                            "DELTA_R_N",
+                            "N_VALUE_0_N",
+                            "N_VALUE_45_N",
+                            "BOT_YS_N_2",
+                            "TOP_YS_N_2",
+                            "RP02_N_2",
+                            "YS_EL_N_2",
+                            "TS_N_2",
+                            "BREAK_EL_N_2",
+                            "AGT_EL_N_2",
+                            "BOT_YS_N_3",
+                            "TOP_YS_N_3",
+                            "RP02_N_3",
+                            "YS_EL_N_3",
+                            "TS_N_3",
+                            "BREAK_EL_N_3",
+                            "AGT_EL_N_3",
+                            "N_VALUE_0_N_2",
+                            "N_VALUE_45_N_2",
+                            "N_VALUE_90_N_2",
+                            "N_VALUE_AVG_N_2",
+                            "TOAST_HARDNESS",
+                            "HARD_TEST_TYPE",
+                            "HARDNESS_D_N",
+                            "HARDNESS_C_N",
+                            "HARDNESS_W_N",
+                            "HARDNESS_A_N",
+                            "EXPAND_HOLE_D",
+                            "EXPAND_HOLE_C",
+                            "EXPAND_HOLE_W",
+                            "EXPAND_HOLE_A",
+                            "AGING_INDEX",
+                            "GHOSTY",
+                            "BEND_L",
+                            "BEND_C",
+                            "SPHR_RATIO_C",
+                            "SPHR_RATIO_GRADE_C",
+                            "CARB_SIZE_C",
+                            "SPHR_RATIO_L",
+                            "SPHR_RATIO_GRADE_L",
+                            "CARB_SIZE_L",
+                            "TOP_DECARB_THICK",
+                            "BOT_DECARB_THICK",
+                            "HR_UNIT_NO",
+                            "CDCM_COIL_NO",
+                            "CDCM_UNIT_NO",
+                            "CDCM_PRODTIME",
+                            "ANN_IN_COIL_NO",
+                            "ANN_OUT_COIL_NO",
+                            "ANN_UNIT_NO",
+                            "ANN_PRODTIME",
+                            "ETL_COIL_NO",
+                            "ETL_UNIT_NO",
+                            "ETL_PRODTIME",
+                            "SG_STD",
+                            "STD_VERSION",
+                            "SG_SIGN",
+                            "ORDER_LEN_MIN",
+                            "PROD_LEN",
+                            "SORT_GRADE_CODE_F",
+                            "TEST_DIRECT_CODE",
+                            "EL_GAUGE_CODE",
+                            "YS_TYPE_CODE",
+                            "YS_MIN",
+                            "YS_MAX",
+                            "YS_EL_MAX",
+                            "TS_MIN",
+                            "TS_MAX",
+                            "BREAK_EL_MIN",
+                            "BREAK_EL_MAX",
+                            "MEASURE_METHOD_R",
+                            "R_VALUE_0_MIN",
+                            "R_VALUE_0_MAX",
+                            "R_VALUE_45_MIN",
+                            "R_VALUE_45_MAX",
+                            "R_VALUE_90_MIN",
+                            "R_VALUE_90_MAX",
+                            "R_VALUE_AVER_MIN",
+                            "R_VALUE_AVER_MAX",
+                            "DELTA_R_MAX",
+                            "MEASURE_RANGE_N",
+                            "N_VALUE_0_MIN",
+                            "N_VALUE_0_MAX",
+                            "N_VALUE_45_MIN",
+                            "N_VALUE_45_MAX",
+                            "N_VALUE_90_MIN",
+                            "N_VALUE_90_MAX",
+                            "N_VALUE_AVER_MIN",
+                            "N_VALUE_AVER_MAX",
+                            "TOAST_HARDNESS_TEST_METHOD",
+                            "HARDNESS_OVEN_MIN",
+                            "HARDNESS_OVEN_MAX",
+                            "AGING_AI_MAX",
+                            "TEST_DIRECT_CODE_2",
+                            "YS_MIN2",
+                            "YS_MAX2",
+                            "YS_EL_MAX2",
+                            "TS_MIN2",
+                            "TS_MAX2",
+                            "BREAK_EL_MIN2",
+                            "BREAK_EL_MAX2",
+                            "TEST_DIRECT_CODE_3",
+                            "YS_MIN3",
+                            "YS_MAX3",
+                            "YS_EL_MAX3",
+                            "TS_MIN3",
+                            "TS_MAX3",
+                            "BREAK_EL_MIN3",
+                            "BREAK_EL_MAX3",
+                            "MEASURE_RANGE_N_2",
+                            "N_VALUE_0_MIN_2",
+                            "N_VALUE_0_MAX_2",
+                            "N_VALUE_45_MIN_2",
+                            "N_VALUE_45_MAX_2",
+                            "N_VALUE_90_MIN_2",
+                            "N_VALUE_90_MAX_2",
+                            "N_VALUE_AVER_MIN_2",
+                            "N_VALUE_AVER_MAX_2",
+                            "BEND_ANGLE",
+                            "BEND_DIA",
+                            "BEND_WIDTH",
+                            "BEND_RESULT",
+                            "HARDNESS_MEASURE_METHOD",
+                            "HARDNESS_MIN",
+                            "HARDNESS_MAX",
+                            "EXPAND_HOLE_METHOD",
+                            "EXPAND_HOLE_MIN",
+                            "EXPAND_HOLE_MAX",
+                            "SPHR_RATIO_METHOD",
+                            "SPHR_RATIO_MIN_C",
+                            "SPHR_RATIO_MIN_L",
+                            "SPHR_RATIO_GRADE_MIN_C",
+                            "SPHR_RATIO_GRADE_MIN_L",
+                            "CARB_SIZE_MIN_C",
+                            "CARB_SIZE_MIN_L",
+                            "TOP_DECARB_THICK_MAX",
+                            "BOT_DECARB_THICK_MAX",
+                            "TOP_DECARB_THICK_PROP_MAX",
+                            "BOT_DECARB_THICK_PROP_MAX",
+                            "GHOSTY_TEST_METHOD",
+                            "GHOST_GRADE",
+                            "DESIGN_ANNEAL_DIAGRAM_CODE",
+                            "DESIGN_TPM_RATE_AIM_OLD",
+                            "DESIGN_TPM_RATE_MIN_OLD",
+                            "DESIGN_TPM_RATE_MAX_OLD",
+                            "DESIGN_RTF_TEMP_AIM",
+                            "DESIGN_RTF_TEMP_MIN",
+                            "DESIGN_RTF_TEMP_MAX",
+                            "DESIGN_SF_TEMP_AIM",
+                            "DESIGN_SF_TEMP_MIN",
+                            "DESIGN_SF_TEMP_MAX",
+                            "DESIGN_SCS_TEMP_AIM",
+                            "DESIGN_SCS_TEMP_MIN",
+                            "DESIGN_SCS_TEMP_MAX",
+                            "DESIGN_RCS_TEMP_AIM",
+                            "DESIGN_RCS_TEMP_MIN",
+                            "DESIGN_RCS_TEMP_MAX",
+                            "DESIGN_OAS_TEMP_AIM",
+                            "DESIGN_OAS_TEMP_MIN",
+                            "DESIGN_OAS_TEMP_MAX",
+                            "ANNEAL_PLAN_NO",
+                            "ANNEAL_DIAGRAM_CODE",
+                            "SPEED_ANN_AVE",
+                            "SPEED_ANN_MAX",
+                            "SPEED_ANN_MIN",
+                            "HS_TEMP_ANN_AVE",
+                            "HS_TEMP_ANN_MAX",
+                            "HS_TEMP_ANN_MIN",
+                            "RTF_TEMP_ANN_AVE",
+                            "RTF_TEMP_ANN_MAX",
+                            "RTF_TEMP_ANN_MIN",
+                            "SF_TEMP_ANN_AVE",
+                            "SF_TEMP_ANN_MAX",
+                            "SF_TEMP_ANN_MIN",
+                            "SCS_TEMP_ANN_AVE",
+                            "SCS_TEMP_ANN_MAX",
+                            "SCS_TEMP_ANN_MIN",
+                            "RCS_MID_TEMP_ANN_AVE",
+                            "RCS_MID_TEMP_ANN_MAX",
+                            "RCS_MID_TEMP_ANN_MIN",
+                            "RCS_TEMP_ANN_AVE",
+                            "RCS_TEMP_ANN_MAX",
+                            "RCS_TEMP_ANN_MIN",
+                            "OAS_TEMP_ANN_AVE",
+                            "OAS_TEMP_ANN_MAX",
+                            "OAS_TEMP_ANN_MIN",
+                            "RHS_TEMP_ANN_AVE",
+                            "RHS_TEMP_ANN_MAX",
+                            "RHS_TEMP_ANN_MIN",
+                            "SNOUT_TEMP_CGL_AVE",
+                            "SNOUT_TEMP_CGL_MAX",
+                            "SNOUT_TEMP_CGL_MIN",
+                            "TPM_RATE_AVE",
+                            "TPM_RATE_MAX",
+                            "TPM_RATE_MIN",
+                            "TPM_FORCE",
+                            "TPM_TEN_FRONT",
+                            "TPM_TEN_BACK",
+                            "TEN_RATE_AVE",
+                            "TEN_RATE_MAX",
+                            "TEN_RATE_MIN",
+                            "SAMP_SPEED_ANN_AVE",
+                            "SAMP_SPEED_ANN_MAX",
+                            "SAMP_SPEED_ANN_MIN",
+                            "SAMP_SPEED_ANN_RANGE",
+                            "SAMP_HS_TEMP_ANN_AVE",
+                            "SAMP_HS_TEMP_ANN_MAX",
+                            "SAMP_HS_TEMP_ANN_MIN",
+                            "SAMP_HS_TEMP_ANN_RANGE",
+                            "SAMP_RTF_TEMP_ANN_AVE",
+                            "SAMP_RTF_TEMP_ANN_MAX",
+                            "SAMP_RTF_TEMP_ANN_MIN",
+                            "SAMP_RTF_TEMP_ANN_RANGE",
+                            "SAMP_SF_TEMP_ANN_AVE",
+                            "SAMP_SF_TEMP_ANN_MAX",
+                            "SAMP_SF_TEMP_ANN_MIN",
+                            "SAMP_SF_TEMP_ANN_RANGE",
+                            "SAMP_SCS_TEMP_ANN_AVE",
+                            "SAMP_SCS_TEMP_ANN_MAX",
+                            "SAMP_SCS_TEMP_ANN_MIN",
+                            "SAMP_SCS_TEMP_ANN_RANGE",
+                            "SAMP_RCS_MID_TEMP_ANN_AVE",
+                            "SAMP_RCS_MID_TEMP_ANN_MAX",
+                            "SAMP_RCS_MID_TEMP_ANN_MIN",
+                            "SAMP_RCS_MID_TEMP_ANN_RANGE",
+                            "SAMP_RCS_TEMP_ANN_AVE",
+                            "SAMP_RCS_TEMP_ANN_MAX",
+                            "SAMP_RCS_TEMP_ANN_MIN",
+                            "SAMP_RCS_TEMP_ANN_RANGE",
+                            "SAMP_OAS_TEMP_ANN_AVE",
+                            "SAMP_OAS_TEMP_ANN_MAX",
+                            "SAMP_OAS_TEMP_ANN_MIN",
+                            "SAMP_OAS_TEMP_ANN_RANGE",
+                            "SAMP_RHS_TEMP_ANN_AVE",
+                            "SAMP_RHS_TEMP_ANN_MAX",
+                            "SAMP_RHS_TEMP_ANN_MIN",
+                            "SAMP_RHS_TEMP_ANN_RANGE",
+                            "SAMP_SNOUT_TEMP_CGL_AVE",
+                            "SAMP_SNOUT_TEMP_CGL_MAX",
+                            "SAMP_SNOUT_TEMP_CGL_MIN",
+                            "SAMP_SNOUT_TEMP_CGL_RANGE",
+                            "SAMP_TPM_RATE_AVE",
+                            "SAMP_TPM_RATE_MAX",
+                            "SAMP_TPM_RATE_MIN",
+                            "SAMP_TPM_RATE_RANGE",
+                            "SAMP_TPM_FORCE_AVE",
+                            "SAMP_TPM_FORCE_MAX",
+                            "SAMP_TPM_FORCE_MIN",
+                            "SAMP_TPM_FORCE_RANGE",
+                            "SAMP_TPM_TEN_FRONT_AVE",
+                            "SAMP_TPM_TEN_FRONT_MAX",
+                            "SAMP_TPM_TEN_FRONT_MIN",
+                            "SAMP_TPM_TEN_FRONT_RANGE",
+                            "SAMP_TPM_TEN_BACK_AVE",
+                            "SAMP_TPM_TEN_BACK_MAX",
+                            "SAMP_TPM_TEN_BACK_MIN",
+                            "SAMP_TPM_TEN_BACK_RANGE",
+                            "SAMP_TEN_RATE_AVE",
+                            "SAMP_TEN_RATE_MAX",
+                            "SAMP_TEN_RATE_MIN",
+                            "SAMP_TEN_RATE_RANGE",
+                            "DEFORMATION_RATE",
+                            "CDCM_THICK",
+                            "DESIGN_TPM_RATE_AIM",
+                            "DESIGN_TPM_RATE_MIN",
+                            "DESIGN_TPM_RATE_MAX",
+                            "HR_START_POS",
+                            "HR_END_POS",
+                            "CR_START_POS",
+                            "CR_END_POS",
+                            "SOCKET_NO_BAF",
+                            "RTF_FUR_TEMP_ANN",
+                            "SF_FUR_TEMP_ANN",
+                            "RTF_DEW_POINT_ANN",
+                            "SF_DEW_POINT_ANN",
+                            "SCRAP_LEN_HEAD_ANN",
+                            "SCRAP_LEN_TAIL_ANN",
+                            "YP_ONLINE",
+                            "TS_ONLINE",
+                            "EL_ONLINE",
+                            "YPEL_ONLINE",
+                            "BH_ONLINE",
+                            "R_ONLINE",
+                            "N_ONLINE",
+                            "REANNEAL_COUNT",
+                            "PRODUCT_FLAG",
+                            "DC_AN_HC10_300",
+                            "DC_HC10_300",
+                            "OAS_MID_TEMP_ANN_AVG",
+                            "OAS_MID_TEMP_ANN_MAX",
+                            "OAS_MID_TEMP_ANN_MIN",
+                            "SAMP_OAS_MID_TEMP_ANN_AVG",
+                            "SAMP_OAS_MID_TEMP_ANN_MAX",
+                            "SAMP_OAS_MID_TEMP_ANN_MIN",
+                            "SAMP_OAS_MID_TEMP_ANN_RANGE",
+                            "RT05_N",
+                            "DC_BM_8",
+                            "DC_BM_10",
+                            "DC_BM_50",
+                            "DC_BM_100",
+                            "YP_PREDICT",
+                            "YP_JUDGE_PREDICT",
+                            "TS_PREDICT",
+                            "EL_PREDICT",
+                            "YPEL_PREDICT",
+                            "BH_PREDICT",
+                            "R90_PREDICT",
+                            "N90_PREDICT",
+                            "R0_PREDICT",
+                            "N0_PREDICT",
+                            "R45_PREDICT",
+                            "N45_PREDICT",
+                            "RBAR_PREDICT",
+                            "NBAR_PREDICT",
+                            "IMPACT_PREDICT",
+                            "DESIGN_SOURCE_HR",
+                            "DESIGN_SOURCE_ANN",
+                            "BOND_RESULT_INFO_ANN",
+                            "CONT_H2_SF",
+                            "CONT_H2_SCS",
+                            "CONT_H2_RCS",
+                            "EARING_RATE",
+                            "BENDING_D",
+                            "BENDING_C",
+                            "BENDING_W",
+                            "BENDING_A",
+                            "ITEM_INC",
+                            "A_CORS_TY_ASTM",
+                            "A_GOOD_TY_ASTM",
+                            "B_CORS_TY_ASTM",
+                            "B_GOOD_TY_ASTM",
+                            "C_CORS_TY_ASTM",
+                            "C_GOOD_TY_ASTM",
+                            "D_CORS_TY_ASTM",
+                            "D_GOOD_TY_ASTM",
+                            "TOP_ROUGH_D",
+                            "TOP_ROUGH_C",
+                            "TOP_ROUGH_W",
+                            "TOP_ROUGH_A",
+                            "BOT_ROUGH_D",
+                            "BOT_ROUGH_C",
+                            "BOT_ROUGH_W",
+                            "BOT_ROUGH_A",
+                            "TOP_PPI_D",
+                            "TOP_PPI_C",
+                            "TOP_PPI_W",
+                            "TOP_PPI_A",
+                            "BOT_PPI_D",
+                            "BOT_PPI_C",
+                            "BOT_PPI_W",
+                            "BOT_PPI_A",
+                            "TOP_WCA_D",
+                            "TOP_WCA_C",
+                            "TOP_WCA_W",
+                            "TOP_WCA_A",
+                            "BOT_WCA_D",
+                            "BOT_WCA_C",
+                            "BOT_WCA_W",
+                            "BOT_WCA_A",
+                            "TPM_WORK_ROLL_DIA",
+                            "TPM_ROLL_ROUGH_TOP",
+                            "TPM_ROLL_ROUGH_BOT",
+                            "TOP_PLATE_WT_D",
+                            "TOP_PLATE_WT_C",
+                            "TOP_PLATE_WT_W",
+                            "TOP_PLATE_WT_A",
+                            "BOT_PLATE_WT_D",
+                            "BOT_PLATE_WT_C",
+                            "BOT_PLATE_WT_W",
+                            "BOT_PLATE_WT_A",
+                            "CHAR_ELM_NAME",
+                            "TOP_CHAR_ELM_WT_D",
+                            "TOP_CHAR_ELM_WT_C",
+                            "TOP_CHAR_ELM_WT_W",
+                            "TOP_CHAR_ELM_WT_A",
+                            "BOT_CHAR_ELM_WT_D",
+                            "BOT_CHAR_ELM_WT_C",
+                            "BOT_CHAR_ELM_WT_W",
+                            "BOT_CHAR_ELM_WT_A",
+                            "TOP_P_FILM_WT_D",
+                            "TOP_P_FILM_WT_C",
+                            "TOP_P_FILM_WT_W",
+                            "TOP_P_FILM_WT_A",
+                            "BOT_P_FILM_WT_D",
+                            "BOT_P_FILM_WT_C",
+                            "BOT_P_FILM_WT_W",
+                            "BOT_P_FILM_WT_A",
+                            "TOP_FE_D",
+                            "TOP_FE_C",
+                            "TOP_FE_W",
+                            "TOP_FE_A",
+                            "BOT_FE_D",
+                            "BOT_FE_C",
+                            "BOT_FE_W",
+                            "BOT_FE_A",
+                            "TOP_POWDER_D",
+                            "TOP_POWDER_C",
+                            "TOP_POWDER_W",
+                            "TOP_POWDER_A",
+                            "BOT_POWDER_D",
+                            "BOT_POWDER_C",
+                            "BOT_POWDER_W",
+                            "BOT_POWDER_A",
+                            "TOP_POWDER_WIDTH_D",
+                            "TOP_POWDER_WIDTH_C",
+                            "TOP_POWDER_WIDTH_W",
+                            "TOP_POWDER_WIDTH_A",
+                            "BOT_POWDER_WIDTH_D",
+                            "BOT_POWDER_WIDTH_C",
+                            "BOT_POWDER_WIDTH_W",
+                            "BOT_POWDER_WIDTH_A",
+                            "TOP_UF_FILM_D",
+                            "TOP_UF_FILM_C",
+                            "TOP_UF_FILM_W",
+                            "TOP_UF_FILM_A",
+                            "BOT_UF_FILM_D",
+                            "BOT_UF_FILM_C",
+                            "BOT_UF_FILM_W",
+                            "BOT_UF_FILM_A",
+                            "TOP_ROUGH_RZ_D",
+                            "TOP_ROUGH_RZ_C",
+                            "TOP_ROUGH_RZ_W",
+                            "TOP_ROUGH_RZ_A",
+                            "BOT_ROUGH_RZ_D",
+                            "BOT_ROUGH_RZ_C",
+                            "BOT_ROUGH_RZ_W",
+                            "BOT_ROUGH_RZ_A",
+                            "TOP_ROUGH_RZ_MAX_D",
+                            "TOP_ROUGH_RZ_MAX_C",
+                            "TOP_ROUGH_RZ_MAX_W",
+                            "TOP_ROUGH_RZ_MAX_A",
+                            "BOT_ROUGH_RZ_MAX_D",
+                            "BOT_ROUGH_RZ_MAX_C",
+                            "BOT_ROUGH_RZ_MAX_W",
+                            "BOT_ROUGH_RZ_MAX_A",
+                            "TOP_ROUGH_RSK_D",
+                            "TOP_ROUGH_RSK_C",
+                            "TOP_ROUGH_RSK_W",
+                            "TOP_ROUGH_RSK_A",
+                            "BOT_ROUGH_RSK_D",
+                            "BOT_ROUGH_RSK_C",
+                            "BOT_ROUGH_RSK_W",
+                            "BOT_ROUGH_RSK_A",
+                            "TOP_ROUGH_RSM_D",
+                            "TOP_ROUGH_RSM_C",
+                            "TOP_ROUGH_RSM_W",
+                            "TOP_ROUGH_RSM_A",
+                            "BOT_ROUGH_RSM_D",
+                            "BOT_ROUGH_RSM_C",
+                            "BOT_ROUGH_RSM_W",
+                            "BOT_ROUGH_RSM_A",
+                            "ROUGH_MEASURE_METHOD",
+                            "TOP_ROUGH_MIN",
+                            "TOP_ROUGH_MAX",
+                            "BOT_ROUGH_MIN",
+                            "BOT_ROUGH_MAX",
+                            "PPI_MIN",
+                            "PPI_MAX",
+                            "WCA_TEST_METHOD",
+                            "WCA_MIN",
+                            "WCA_MAX",
+                            "ROUGH_RZ_MIN",
+                            "ROUGH_RZ_MAX",
+                            "ROUGH_RZMAX_MIN",
+                            "ROUGH_RZMAX_MAX",
+                            "ROUGH_RSK_MIN",
+                            "ROUGH_RSK_MAX",
+                            "ROUGH_RSM_MIN",
+                            "ROUGH_RSM_MAX"
+                        ],
+                        "removal_reason": "特征列的取值为常量或空。"
+                    },
+                    {
+                        "step": "生成数据画像",
+                        "status": "success"
+                    },
+                    {
+                        "step": "生成数据预处理计划。",
+                        "status": "success",
+                        "plan": {
+                            "MAT_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "SIGN_CODE": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "ST_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "PONO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "THICK_ZN": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "TOP_YS_N": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "YP_JUDGE": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "YS_EL_N": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "BREAK_EL_N": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "AGT_EL_N": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "N_VALUE_90_N": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "N_VALUE_AVG_N": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "REC_REVISE_TIME": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "MAT_TRACK_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "SAMPLE_ORDER_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "SLAB_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "SM_UNIT_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "SM_PRODTIME": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "HR_COIL_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "HR_PRODTIME": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "HR_ORDER_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "ORDER_THICK": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "PROD_THICK": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ORDER_WIDTH": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "PROD_WIDTH": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ORDER_WT": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "PSR": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "MIC": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "FIN_CUST_CODE": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "FIN_USER_NAME": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "APN": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "APN_DESC": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "DELIVERY_DATE_IN": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "SAMPLE_SHAPE_CODE": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "ELM_C": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_SI": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_MN": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_P": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_S": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_AL": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_NB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_TI": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_B": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_CU": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_NI": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_CR": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_MO": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_V": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_N": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_O": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_H": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "EXCESS_C": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "SLAB_PLACE_CODE": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "CC_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "CAST_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "TD_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "PREV_HEAT_ST_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "NEXT_HEAT_ST_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "DESIGN_DISCH_TEMP_AIM": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "DESIGN_DISCH_TEMP_MIN": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "DESIGN_DISCH_TEMP_MAX": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "DESIGN_FM_TEMP_AIM": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "DESIGN_FM_TEMP_MIN": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "DESIGN_FM_TEMP_MAX": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "DESIGN_CT_TEMP_AIM": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "DESIGN_CT_TEMP_MIN": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "DESIGN_CT_TEMP_MAX": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "DESIGN_LAY_COLD_MODE": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "HR_PLAN_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "FUR_NO_HR": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "CHARGE_TEMP": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "DISCH_TEMP": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "IN_FURNACE_TIME": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ROUGH_TEMP_AVE": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ROUGH_TEMP_MAX": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ROUGH_TEMP_MIN": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "FM_TEMP_AVE": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "FM_TEMP_MAX": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "FM_TEMP_MIN": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "CT_TEMP_AVE": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "CT_TEMP_MAX": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "CT_TEMP_MIN": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "SAMP_ROUGH_TEMP_AVE": [
+                                {
+                                    "operation": "impute_median"
+                                }
+                            ],
+                            "SAMP_ROUGH_TEMP_MAX": [
+                                {
+                                    "operation": "impute_median"
+                                }
+                            ],
+                            "SAMP_ROUGH_TEMP_MIN": [
+                                {
+                                    "operation": "impute_median"
+                                }
+                            ],
+                            "SAMP_ROUGH_TEMP_RANGE": [
+                                {
+                                    "operation": "impute_median"
+                                }
+                            ],
+                            "SAMP_FM_TEMP_AVE": [
+                                {
+                                    "operation": "impute_median"
+                                }
+                            ],
+                            "SAMP_FM_TEMP_MAX": [
+                                {
+                                    "operation": "impute_median"
+                                }
+                            ],
+                            "SAMP_FM_TEMP_MIN": [
+                                {
+                                    "operation": "impute_median"
+                                }
+                            ],
+                            "SAMP_FM_TEMP_RANGE": [
+                                {
+                                    "operation": "impute_median"
+                                }
+                            ],
+                            "SAMP_CT_TEMP_AVE": [
+                                {
+                                    "operation": "impute_median"
+                                }
+                            ],
+                            "SAMP_CT_TEMP_MAX": [
+                                {
+                                    "operation": "impute_median"
+                                }
+                            ],
+                            "SAMP_CT_TEMP_MIN": [
+                                {
+                                    "operation": "impute_median"
+                                }
+                            ],
+                            "SAMP_CT_TEMP_RANGE": [
+                                {
+                                    "operation": "impute_median"
+                                }
+                            ],
+                            "HR_THICK": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "PREC_ST_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "FIN_ST_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "SP_EXIT_MAT_NO": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "IMPACT_ENEG_1": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "IMPACT_ENEG_2": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "IMPACT_ENEG_3": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "IMPACT_ENEG_A": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "IMPACT_AVER_MIN": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "IMPACT_SINGLE_MIN": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "BOND_RESULT_INFO_HR": [
+                                {
+                                    "operation": "delete_column"
+                                }
+                            ],
+                            "ELM_CA_ACT": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_SN_ACT": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_AS_ACT": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_SB_ACT": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_PB_ACT": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_C_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_SI_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_MN_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_P_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_S_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_ALT_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_NB_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_TI_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_V_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_CU_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_NI_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_CR_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_MO_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_B_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_N_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_O_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_H_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "EXCESS_C_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_CA_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_SN_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_AS_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_SB_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ],
+                            "ELM_PB_SLAB": [
+                                {
+                                    "operation": "no_action"
+                                }
+                            ]
+                        },
+                        "retry_count": 0
+                    },
+                    {
+                        "column": "MAT_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SIGN_CODE",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "ST_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "PONO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "REC_REVISE_TIME",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "MAT_TRACK_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SAMPLE_ORDER_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SLAB_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SM_UNIT_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SM_PRODTIME",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "HR_COIL_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "HR_PRODTIME",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "HR_ORDER_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "PSR",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "MIC",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "FIN_CUST_CODE",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "FIN_USER_NAME",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "APN",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "APN_DESC",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "DELIVERY_DATE_IN",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SAMPLE_SHAPE_CODE",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SLAB_PLACE_CODE",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "CC_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "CAST_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "TD_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "PREV_HEAT_ST_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "NEXT_HEAT_ST_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "DESIGN_LAY_COLD_MODE",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "HR_PLAN_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "FUR_NO_HR",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "PREC_ST_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "FIN_ST_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SP_EXIT_MAT_NO",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "IMPACT_AVER_MIN",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "IMPACT_SINGLE_MIN",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "BOND_RESULT_INFO_HR",
+                        "operation": "delete_column",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SAMP_ROUGH_TEMP_AVE",
+                        "operation": "impute_median",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SAMP_ROUGH_TEMP_MAX",
+                        "operation": "impute_median",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SAMP_ROUGH_TEMP_MIN",
+                        "operation": "impute_median",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SAMP_ROUGH_TEMP_RANGE",
+                        "operation": "impute_median",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SAMP_FM_TEMP_AVE",
+                        "operation": "impute_median",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SAMP_FM_TEMP_MAX",
+                        "operation": "impute_median",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SAMP_FM_TEMP_MIN",
+                        "operation": "impute_median",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SAMP_FM_TEMP_RANGE",
+                        "operation": "impute_median",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SAMP_CT_TEMP_AVE",
+                        "operation": "impute_median",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SAMP_CT_TEMP_MAX",
+                        "operation": "impute_median",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SAMP_CT_TEMP_MIN",
+                        "operation": "impute_median",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "SAMP_CT_TEMP_RANGE",
+                        "operation": "impute_median",
+                        "params": {},
+                        "status": "success"
+                    },
+                    {
+                        "column": "THICK_ZN",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "TOP_YS_N",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "YP_JUDGE",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "YS_EL_N",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "BREAK_EL_N",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "AGT_EL_N",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "N_VALUE_90_N",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "N_VALUE_AVG_N",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ORDER_THICK",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "PROD_THICK",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ORDER_WIDTH",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "PROD_WIDTH",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ORDER_WT",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_C",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_SI",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_MN",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_P",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_S",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_AL",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_NB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_TI",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_B",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_CU",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_NI",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_CR",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_MO",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_V",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_N",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_O",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_H",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "EXCESS_C",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "DESIGN_DISCH_TEMP_AIM",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "DESIGN_DISCH_TEMP_MIN",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "DESIGN_DISCH_TEMP_MAX",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "DESIGN_FM_TEMP_AIM",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "DESIGN_FM_TEMP_MIN",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "DESIGN_FM_TEMP_MAX",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "DESIGN_CT_TEMP_AIM",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "DESIGN_CT_TEMP_MIN",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "DESIGN_CT_TEMP_MAX",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "CHARGE_TEMP",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "DISCH_TEMP",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "IN_FURNACE_TIME",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ROUGH_TEMP_AVE",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ROUGH_TEMP_MAX",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ROUGH_TEMP_MIN",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "FM_TEMP_AVE",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "FM_TEMP_MAX",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "FM_TEMP_MIN",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "CT_TEMP_AVE",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "CT_TEMP_MAX",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "CT_TEMP_MIN",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "HR_THICK",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "IMPACT_ENEG_1",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "IMPACT_ENEG_2",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "IMPACT_ENEG_3",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "IMPACT_ENEG_A",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_CA_ACT",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_SN_ACT",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_AS_ACT",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_SB_ACT",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_PB_ACT",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_C_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_SI_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_MN_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_P_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_S_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_ALT_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_NB_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_TI_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_V_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_CU_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_NI_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_CR_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_MO_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_B_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_N_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_O_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_H_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "EXCESS_C_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_CA_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_SN_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_AS_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_SB_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    },
+                    {
+                        "column": "ELM_PB_SLAB",
+                        "operation": "no_action",
+                        "params": {},
+                        "status": "no_action"
+                    }
+                ]
+            },
+            "artifacts": {
+                "fitted_objects_keys": []
+            }
+        },
+        {
+            "stage_name": "feature_engineering",
+            "timestamp": "2025-06-10T16:56:14.696846",
+            "status": "success",
+            "details": {
+                "steps_details": [
+                    {
+                        "step": "llm_generate_fe_plan",
+                        "status": "success",
+                        "plan": [
+                            {
+                                "operation": "apply_custom_domain_formula",
+                                "params": {
+                                    "formula_name": "carbon_equivalent_ceq",
+                                    "params": {
+                                        "C_col": "ELM_C",
+                                        "Mn_col": "ELM_MN",
+                                        "Cr_col": "ELM_CR",
+                                        "Mo_col": "ELM_MO",
+                                        "V_col": "ELM_V",
+                                        "Ni_col": "ELM_NI",
+                                        "Cu_col": "ELM_CU"
+                                    }
+                                }
+                            },
+                            {
+                                "operation": "create_ratio_features",
+                                "params": {
+                                    "numerator_col": "PROD_THICK",
+                                    "denominator_col": "ORDER_THICK",
+                                    "new_col_name": "THICK_RATIO"
+                                }
+                            },
+                            {
+                                "operation": "create_ratio_features",
+                                "params": {
+                                    "numerator_col": "PROD_WIDTH",
+                                    "denominator_col": "ORDER_WIDTH",
+                                    "new_col_name": "WIDTH_RATIO"
+                                }
+                            },
+                            {
+                                "operation": "create_polynomial_features",
+                                "params": {
+                                    "columns": [
+                                        "ELM_C",
+                                        "ELM_MN",
+                                        "ROUGH_TEMP_AVE",
+                                        "CT_TEMP_AVE"
+                                    ],
+                                    "degree": 2
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "operation": "apply_custom_domain_formula",
+                        "params": {
+                            "formula_name": "carbon_equivalent_ceq",
+                            "params": {
+                                "C_col": "ELM_C",
+                                "Mn_col": "ELM_MN",
+                                "Cr_col": "ELM_CR",
+                                "Mo_col": "ELM_MO",
+                                "V_col": "ELM_V",
+                                "Ni_col": "ELM_NI",
+                                "Cu_col": "ELM_CU"
+                            }
+                        },
+                        "status": "success"
+                    },
+                    {
+                        "operation": "create_ratio_features",
+                        "params": {
+                            "numerator_col": "PROD_THICK",
+                            "denominator_col": "ORDER_THICK",
+                            "new_col_name": "THICK_RATIO"
+                        },
+                        "status": "success"
+                    },
+                    {
+                        "operation": "create_ratio_features",
+                        "params": {
+                            "numerator_col": "PROD_WIDTH",
+                            "denominator_col": "ORDER_WIDTH",
+                            "new_col_name": "WIDTH_RATIO"
+                        },
+                        "status": "success"
+                    },
+                    {
+                        "operation": "create_polynomial_features",
+                        "params": {
+                            "columns": [
+                                "ELM_C",
+                                "ELM_MN",
+                                "ROUGH_TEMP_AVE",
+                                "CT_TEMP_AVE"
+                            ],
+                            "degree": 2
+                        },
+                        "status": "success"
+                    }
+                ]
+            },
+            "artifacts": {
+                "fitted_objects_keys": [
+                    "polynomial_features_['ELM_C', 'ELM_MN', 'ROUGH_TEMP_AVE', 'CT_TEMP_AVE']"
+                ]
+            }
+        },
+        {
+            "stage_name": "model_selection",
+            "timestamp": "2025-06-10T16:56:36.983828",
+            "status": "success",
+            "details": {
+                "selected_models_summary": {
+                    "RandomForestRegressor": {
+                        "reason": "用户明确要求使用随机森林算法，且样本量285符合知识库中小样本场景（<500）。随机森林在高维特征（110个）下具有鲁棒性，无需异常处理且可有效防止过拟合。",
+                        "hyperparameter_suggestions": {
+                            "n_estimators": [
+                                100,
+                                150,
+                                200
+                            ],
+                            "max_depth": [
+                                5,
+                                10,
+                                15,
+                                null
+                            ],
+                            "min_samples_split": [
+                                2,
+                                5,
+                                10
+                            ],
+                            "min_samples_leaf": [
+                                1,
+                                2,
+                                4
+                            ]
+                        }
+                    }
+                },
+                "log": [
+                    {
+                        "step": "llm_recommend_models",
+                        "status": "success",
+                        "recommendations": {
+                            "RandomForestRegressor": {
+                                "reason": "用户明确要求使用随机森林算法，且样本量285符合知识库中小样本场景（<500）。随机森林在高维特征（110个）下具有鲁棒性，无需异常处理且可有效防止过拟合。",
+                                "hyperparameter_suggestions": {
+                                    "n_estimators": [
+                                        100,
+                                        150,
+                                        200
+                                    ],
+                                    "max_depth": [
+                                        5,
+                                        10,
+                                        15,
+                                        null
+                                    ],
+                                    "min_samples_split": [
+                                        2,
+                                        5,
+                                        10
+                                    ],
+                                    "min_samples_leaf": [
+                                        1,
+                                        2,
+                                        4
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                ]
+            },
+            "artifacts": {}
+        },
+        {
+            "stage_name": "pipeline_construction_logic",
+            "timestamp": "2025-06-10T16:56:36.983828",
+            "status": "success",
+            "details": {
+                "chosen_model_for_training": "RandomForestRegressor",
+                "hyperparameter_suggestions": {
+                    "n_estimators": [
+                        100,
+                        150,
+                        200
+                    ],
+                    "max_depth": [
+                        5,
+                        10,
+                        15,
+                        null
+                    ],
+                    "min_samples_split": [
+                        2,
+                        5,
+                        10
+                    ],
+                    "min_samples_leaf": [
+                        1,
+                        2,
+                        4
+                    ]
+                }
+            },
+            "artifacts": {}
+        },
+        {
+            "stage_name": "model_training_evaluation",
+            "timestamp": "2025-06-10T16:57:07.689239",
+            "status": "success",
+            "details": {
+                "training_log": [
+                    {
+                        "step": "data_split",
+                        "test_size": 0.2,
+                        "random_state": 42,
+                        "status": "success",
+                        "train_shape": [
+                            228,
+                            110
+                        ],
+                        "test_shape": [
+                            57,
+                            110
+                        ]
+                    },
+                    {
+                        "step": "model_training",
+                        "model_name": "RandomForestRegressor",
+                        "status": "success",
+                        "best_hyperparameters": {
+                            "max_depth": 10,
+                            "min_samples_leaf": 1,
+                            "min_samples_split": 2,
+                            "n_estimators": 100
+                        }
+                    },
+                    {
+                        "step": "model_evaluation",
+                        "model_name": "RandomForestRegressor",
+                        "status": "success",
+                        "metrics": {
+                            "mse": 145.87386294672424,
+                            "rmse": 12.077825257335206,
+                            "r2": 0.6147459293894817
+                        }
+                    },
+                    {
+                        "step": "feature_importance_extraction",
+                        "model_name": "RandomForestRegressor",
+                        "status": "success"
+                    }
+                ],
+                "evaluation_metrics": {
+                    "mse": 145.87386294672424,
+                    "rmse": 12.077825257335206,
+                    "r2": 0.6147459293894817
+                }
+            },
+            "artifacts": {
+                "trained_model_name": "RandomForestRegressor"
+            }
+        }
+    ]
+}
