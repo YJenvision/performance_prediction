@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from llm_utils import call_llm
 from knowledge_base.kb_service import KnowledgeBaseService
 
@@ -27,8 +27,15 @@ class SteelPerformanceIntentRecognizer:
             return {"error": "LLM_CALL_FAILED", "details": llm_response_str}
 
         try:
-            data = json.loads(llm_response_str)
-            return data
+            # 找到JSON对象的开始和结束位置
+            start_index = llm_response_str.find('{')
+            end_index = llm_response_str.rfind('}')
+            if start_index != -1 and end_index != -1:
+                json_str = llm_response_str[start_index:end_index + 1]
+                data = json.loads(json_str)
+                return data
+            else:
+                raise json.JSONDecodeError("No JSON object found", llm_response_str, 0)
 
         except json.JSONDecodeError as e:
             return {"error": "JSON_PARSE_FAILED", "details": str(e), "original_response": llm_response_str}
@@ -48,7 +55,6 @@ class SteelPerformanceIntentRecognizer:
         - 一个包含意图和相关信息的字典。
         """
         # 步骤1: 意图分类
-        # 意图分类的系统提示词
         INTENT_CLASSIFICATION_SYSTEM_PROMPT = """
 你是一个专业的钢铁产品性能预报智能意图分类助手，核心任务是精准理解和分类用户的请求。
 用户的请求可以分为以下四种主要意图：
@@ -99,82 +105,70 @@ unknown_intent"""
         llm_intent_response = call_llm(
             system_prompt=INTENT_CLASSIFICATION_SYSTEM_PROMPT,
             user_prompt=intent_classification_user_prompt,
-            temperature=0.1,  # 分类任务，较低的温度
+            temperature=0.1,
             model="ds_v3"
         )
-
-        # 正常返回意图字符串
-        intent = llm_intent_response
+        intent = llm_intent_response.strip()
 
         # 步骤2: 路由阶段，根据意图进行处理。
-        current_date = datetime.now().strftime("%Y年%m月%d日")
+        current_date = datetime.now()
         MODEL_BUILDING_INFO_EXTRACTION_SYSTEM_PROMPT = f"""你是一个信息提取助手。用户的请求是关于构建一个新的钢铁产品性能预报模型。
 请从用户请求中提取以下关键信息，并以严格的JSON格式返回。
-当前日期是：{current_date}。
+当前日期是：{current_date.strftime("%Y年%m月%d日")}。
 
 需要提取的字段：
 1.  `user_request`: 字符串，用户的原始请求文本。
-2.  `sg_sign`: 字符串，钢种牌号，例如 "Q235B", "HRB400E", "CR420LA"。如果用户请求中未提及，则其值为 null。
-3.  `target_metric`: 字符串，目标性能指标，例如 "抗拉强度", "屈服强度", "屈服延伸率"。如果无法从用户请求中明确识别，则其值为 "未知指标"。
+2.  `sg_sign`: 字符串数组，钢种牌号。如果用户提及多个（如 "Q235B和Q345B"），请将它们全部提取到一个列表中 `["Q235B", "Q345B"]`。如果只提及一个，也放入列表中 `["Q235B"]`。如果未提及，则其值为 null。
+3.  `target_metric`: 字符串，目标性能指标，例如 "抗拉强度", "屈服强度"。如果无法从用户请求中明确识别，则其值为 "未知指标"。
 4.  `time_range`: 字符串，数据时间范围，格式为 "YYYYMMDD-YYYYMMDD"。
     * 如果用户明确指定了时间范围，请准确提取并转换为 "YYYYMMDD-YYYYMMDD" 格式。
-    * 如果用户提及相对时间如 "过去一年"、"最近一年"，请基于当前日期（{current_date}）计算，格式为 "YYYYMMDD-YYYYMMDD"。
-    * 如果用户完全没有提及任何时间信息，则默认使用最近一年的数据，请基于当前日期（{current_date}）计算，格式为 "YYYYMMDD-YYYYMMDD"。
-5.  `product_unit_no`: 字符串，生产机组号，例如 "H033", "C401"， "C612"。如果用户请求中未提及，则其值为 null。
-6.  `st_no`: 字符串，出钢记号，例如 "AR3162E1", "AR3141E5", "DR4244E1"。如果用户请求中未提及，则其值为 null。
+    * 如果用户提及相对时间如 "过去一年"、"最近半年"，请基于当前日期（{current_date.strftime("%Y年%m月%d日")}）计算。
+    * 如果用户完全没有提及任何时间信息，则默认使用最近一年的数据。
+5.  `product_unit_no`: 字符串数组，生产机组号。如果用户提及多个（如 "H033和H043"），请将它们提取为 `["H033", "H043"]`。如果只提及一个，则为 `["H033"]`。如果未提及，则其值为 null。
+6.  `st_no`: 字符串数组，出钢记号。处理方式同上。如果未提及，则其值为 null。
 
 返回的JSON格式必须如下，所有字段都必须包含：
 {{
   "user_request": "用户的原始请求文本",
-  "sg_sign": "提取到的牌号或null",
+  "sg_sign": ["提取到的牌号1", "提取到的牌号2"] or null,
   "target_metric": "提取到的目标性能指标或'未知指标'",
-  "time_range": "提取到的时间范围YYYYMMDD-YYYYMMDD",
-  "product_unit_no": "提取到的机组号或null",
-  "st_no": "提取到的出钢记号或null"
+  "time_range": "计算出的时间范围YYYYMMDD-YYYYMMDD",
+  "product_unit_no": ["提取到的机组号1", "提取到的机组号2"] or null,
+  "st_no": ["提取到的出钢记号1"] or null
 }}
 
-请确保所有字段都存在于返回的JSON中。
+请确保所有字段都存在于返回的JSON中，并且只返回JSON对象，不要包含任何额外的解释或文本。
 
 例如：
-用户请求: "用过去一年的数据构建一个Q235B的屈服强度性能预报模型，机组H033"，当前日期是2025年6月5日。
+用户请求: "用过去一年的数据为H033和H043机组构建一个Q235B的屈服强度性能预报模型"，当前日期是{current_date.strftime("%Y年%m月%d日")}。
 你应该返回：
 {{
-  "user_request": "用过去一年的数据构建一个Q235B的屈服强度性能预报模型，机组H033",
-  "sg_sign": "Q235B",
+  "user_request": "用过去一年的数据为H033和H043机组构建一个Q235B的屈服强度性能预报模型",
+  "sg_sign": ["Q235B"],
   "target_metric": "屈服强度",
-  "time_range": "20240605-20250605",
-  "product_unit_no": "H033",
+  "time_range": "{(current_date - timedelta(days=365)).strftime("%Y%m%d")}-{current_date.strftime("%Y%m%d")}",
+  "product_unit_no": ["H033", "H043"],
   "st_no": null
 }}
 
-用户请求: "我想建一个抗拉强度的模型"，当前日期是2025年6月5日。
+用户请求: "我想建一个抗拉强度的模型"，当前日期是{current_date.strftime("%Y年%m月%d日")}。
 你应该返回：
 {{
   "user_request": "我想建一个抗拉强度的模型",
   "sg_sign": null,
   "target_metric": "抗拉强度",
-  "time_range": "20240605-20250605",
+  "time_range": "{(current_date - timedelta(days=365)).strftime("%Y%m%d")}-{current_date.strftime("%Y%m%d")}",
   "product_unit_no": null,
   "st_no": null
 }}
-
-用户请求: "用2024年的数据建一个Q345B的冲击功模型，在H033号机组上"，当前日期是2025年6月5日。
-你应该返回：
-{{
-  "user_request": "用2024年的数据建一个H033机组的Q345B冲击功模型",
-  "sg_sign": "Q345B",
-  "target_metric": "冲击功",
-  "time_range": "20240101-20241231",
-  "product_unit_no": "H033",
-  "st_no": null
-}}"""
+"""
         if intent == "model_building_evaluation_request":
             # 对于模型构建请求，提取详细信息
             info_extraction_user_prompt = user_request
             llm_extraction_response = call_llm(
                 system_prompt=MODEL_BUILDING_INFO_EXTRACTION_SYSTEM_PROMPT,
                 user_prompt=info_extraction_user_prompt,
-                temperature=0.2,  # 提取任务，温度稍高一些
+                temperature=0.1,
                 model="ds_v3"
             )
 
@@ -188,7 +182,6 @@ unknown_intent"""
                     "error_details": extracted_info
                 }
 
-            # 确保关键字段存在
             pre_result = {
                 "user_request": user_request,
                 "intent": intent,
@@ -199,7 +192,6 @@ unknown_intent"""
                 "st_no": extracted_info.get("st_no")
             }
 
-            # 新增对于"未知指标"的判定，因为"未知指标"意味着建模流程走不通，直接返回相关提示信息，要求用户重新确认需求。
             if pre_result["target_metric"] == "未知指标":
                 return {
                     "user_request": user_request,
@@ -207,14 +199,11 @@ unknown_intent"""
                     "status": "unknown_target_metric",
                     "error_details": "无法识别目标性能指标，请确认是否正确表述。"
                 }
-
-            # 目标性能字段符合要求的话，根据业务数据库中的相关知识进行字段映射。
             else:
-                # 初始化知识库服务并搜索目标性能指标中英文对照列表
                 kb = KnowledgeBaseService("professional_knowledge_kb")
                 search_query = "目标性能指标字段映射对照列表。"
                 results = kb.search(search_query, k=1)
-                
+
                 if not results:
                     return {
                         "user_request": user_request,
@@ -222,15 +211,13 @@ unknown_intent"""
                         "status": "professional_knowledge_kb_search_failed",
                         "error_details": "无法从业务数据知识库中获取目标性能字段映射对照信息。"
                     }
-                
-                # 从搜索结果中获取目标性能指标列表
+
                 target_metrics_list = results[0]["metadata"]
-                
-                # 构建LLM系统提示词，用于寻找最适配的字段对照
+
                 FIELD_MAPPING_SYSTEM_PROMPT = f"""你是一个专业的钢铁产品性能指标映射助手。你的任务是将用户提供的目标性能指标名称映射到字段代码。
 请根据以下目标性能指标列表，找出与用户输入最匹配的一个标准名称和对应的字段代码：
 {json.dumps(target_metrics_list, ensure_ascii=False, indent=2)}
-                
+
 你需要考虑以下因素：
 1. 完全匹配：用户输入与标准名称standard_name或别名aliases完全一致
 2. 部分匹配：用户输入包含标准名称standard_name或别名aliases，或者标准名称standard_name或别名aliases包含用户输入
@@ -240,28 +227,25 @@ unknown_intent"""
 - field_code: 如果匹配，返回字段代码；如果不匹配，返回null
 
 只返回JSON对象，不要有其他文本。"""
-                
-                # 调用LLM进行字段映射
+
                 field_mapping_user_prompt = f"用户输入的目标性能指标是：{pre_result['target_metric']}"
                 llm_mapping_response = call_llm(
                     system_prompt=FIELD_MAPPING_SYSTEM_PROMPT,
                     user_prompt=field_mapping_user_prompt,
-                    temperature=0.1,  # 映射任务
+                    temperature=0.1,
                     model="ds_v3"
                 )
-                
-                # 解析LLM返回的映射结果
+
                 mapping_result = self._parse_llm_json_response(llm_mapping_response)
 
-                if "error" in mapping_result:  # 检查解析或LLM调用是否有错
+                if "error" in mapping_result:
                     return {
                         "user_request": user_request,
                         "intent": intent,
                         "status": "field_mapping_failed",
                         "error_details": mapping_result
                     }
-                
-                # 检查是否找到匹配项
+
                 if not mapping_result.get("matched", False) or mapping_result.get("field_code") is None:
                     return {
                         "user_request": user_request,
@@ -269,12 +253,10 @@ unknown_intent"""
                         "status": "target_metric_not_matched",
                         "error_details": f"无法将'{pre_result['target_metric']}'映射到业务数据库中已知的目标性能指标字段。"
                     }
-                
-                # 更新pre_result中的target_metric字段为field_code，保持结构一致
+
                 final_result = pre_result.copy()
-                # 只替换target_metric字段的值，不添加额外字段
                 final_result["target_metric"] = mapping_result["field_code"]
-                
+
                 return final_result
 
         # 模型部署上线请求

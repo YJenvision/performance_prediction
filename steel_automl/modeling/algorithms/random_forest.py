@@ -1,9 +1,12 @@
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.metrics import mean_squared_error, r2_score
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, Tuple, Optional, List
+from skopt import BayesSearchCV
+from skopt.space import Real, Integer, Categorical
+from scipy.stats import randint, uniform
 from config import DEFAULT_RANDOM_STATE
 
 
@@ -13,49 +16,121 @@ class RandomForestModel:
         初始化随机森林回归模型。
 
         参数:
-        - hyperparameters: 模型的超参数。如果为None，则使用默认参数或后续通过GridSearch确定。
+        - hyperparameters: 模型的固定超参数。
         """
         self.model_name = "RandomForestRegressor"
-        self.model: Optional[RandomForestRegressor] = None
+        self.model: Optional[Any] = None  # Can be Regressor or a SearchCV object
         self.hyperparameters = hyperparameters if hyperparameters else {}
         self.best_params_: Optional[Dict[str, Any]] = None
 
-    def train(self, X_train: pd.DataFrame, y_train: pd.Series, tune_hyperparameters: bool = False,
+    def _prepare_bayesian_search_space(self, param_grid: Dict[str, Any]) -> Dict[str, Any]:
+        """将建议的参数范围转换为BayesSearchCV兼容的搜索空间。"""
+        search_space = {}
+        for param, values in param_grid.items():
+            if not isinstance(values, list) or len(values) < 2:
+                search_space[param] = Categorical([values])
+                continue
+
+            lower, upper = values[0], values[1]
+            param_type = 'log' if len(values) > 2 and values[2] == 'log' else 'uniform'
+
+            if isinstance(lower, int) and isinstance(upper, int):
+                search_space[param] = Integer(lower, upper, prior=param_type)
+            elif isinstance(lower, float) or isinstance(upper, float):
+                search_space[param] = Real(float(lower), float(upper), prior=param_type)
+            else:
+                search_space[param] = Categorical(values)
+        return search_space
+
+    def _prepare_random_search_distributions(self, param_grid: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        将建议的范围转换为scipy.stats分布，用于RandomizedSearchCV。
+        """
+        distributions = {}
+        for param, values in param_grid.items():
+            if not isinstance(values, list) or len(values) < 2:
+                distributions[param] = values
+                continue
+
+            lower, upper = values[0], values[1]
+
+            if isinstance(lower, int) and isinstance(upper, int):
+                if lower >= upper:
+                    distributions[param] = [lower]
+                else:
+                    # randint 从 [low, high) 中采样，所以 high 需要是 upper + 1 才能包含 upper
+                    distributions[param] = randint(lower, upper + 1)
+            elif isinstance(lower, float) or isinstance(upper, float):
+                if lower >= upper:
+                    distributions[param] = [lower]
+                else:
+                    # uniform 从 [loc, loc + scale] 中采样
+                    distributions[param] = uniform(loc=float(lower), scale=float(upper) - float(lower))
+            else:
+                distributions[param] = values
+        return distributions
+
+    def train(self, X_train: pd.DataFrame, y_train: pd.Series,
+              hpo_config: Optional[Dict[str, Any]] = None,
               param_grid: Optional[Dict[str, Any]] = None) -> None:
         """
-        训练模型。
-
-        参数:
-        - X_train: 训练特征。
-        - y_train: 训练目标。
-        - tune_hyperparameters: 是否进行超参数调优。
-        - param_grid: 超参数调优的搜索网格 (如果tune_hyperparameters为True)。
+        训练模型，支持多种超参数优化方法。
         """
-        if tune_hyperparameters and param_grid:
-            print(f"开始为 {self.model_name} 进行超参数调优...")
-            # 确保param_grid中的参数名与RandomForestRegressor的参数名一致
-            rf = RandomForestRegressor(random_state=DEFAULT_RANDOM_STATE, **self.hyperparameters)  # 可以传入初始参数
+        should_tune = hpo_config and param_grid
+        hpo_method = hpo_config.get("method") if should_tune else None
 
-            # 过滤掉param_grid中不属于模型合法参数的键
+        if hpo_method:
+            print(f"开始为 {self.model_name} 进行超参数调优 (方法: {hpo_method})...")
+            rf = RandomForestRegressor(random_state=DEFAULT_RANDOM_STATE, **self.hyperparameters)
+
             valid_param_grid = {k: v for k, v in param_grid.items() if k in rf.get_params().keys()}
-            if len(valid_param_grid) != len(param_grid):
-                print(
-                    f"警告: 以下参数在param_grid中但不是 {self.model_name} 的有效参数，已被忽略: {set(param_grid.keys()) - set(valid_param_grid.keys())}")
-
             if not valid_param_grid:
                 print("警告: 没有有效的超参数网格用于调优，将使用默认/初始参数训练。")
-                self.model = RandomForestRegressor(random_state=DEFAULT_RANDOM_STATE, **self.hyperparameters)
+                should_tune = False
             else:
-                grid_search = GridSearchCV(estimator=rf, param_grid=valid_param_grid, cv=3,
-                                           scoring='neg_mean_squared_error', n_jobs=-1, verbose=1)
-                grid_search.fit(X_train, y_train)
-                self.model = grid_search.best_estimator_
-                self.best_params_ = grid_search.best_params_
-                print(f"{self.model_name} 最佳超参数: {self.best_params_}")
-        else:
+                search_cv = None
+                cv_folds = hpo_config.get("cv_folds", 3)
+                scoring = hpo_config.get("scoring_metric", 'neg_mean_squared_error')
+                n_iter = hpo_config.get("n_iter", 30)
+
+                if hpo_method == "GridSearchCV":
+                    search_cv = GridSearchCV(
+                        estimator=rf, param_grid=valid_param_grid, cv=cv_folds,
+                        scoring=scoring, n_jobs=-1, verbose=1
+                    )
+                elif hpo_method == "RandomizedSearchCV":
+                    # **[FIX]** 使用新的辅助函数来创建正确的分布
+                    param_distributions = self._prepare_random_search_distributions(valid_param_grid)
+                    print(f"RandomizedSearchCV开始，为随机搜索准备的分布: {param_distributions}")
+                    search_cv = RandomizedSearchCV(
+                        estimator=rf, param_distributions=param_distributions, n_iter=n_iter,
+                        cv=cv_folds, scoring=scoring, n_jobs=-1, verbose=1,
+                        random_state=DEFAULT_RANDOM_STATE
+                    )
+                elif hpo_method == "BayesianOptimization":
+                    print(f"BayesianOptimization开始，为贝叶斯优化准备搜索空间: {valid_param_grid}")
+                    search_space = self._prepare_bayesian_search_space(valid_param_grid)
+                    search_cv = BayesSearchCV(
+                        estimator=rf, search_spaces=search_space, n_iter=n_iter,
+                        cv=cv_folds, scoring=scoring, n_jobs=-1, verbose=1,
+                        random_state=DEFAULT_RANDOM_STATE
+                    )
+
+                if search_cv:
+                    search_cv.fit(X_train, y_train)
+                    self.model = search_cv.best_estimator_
+                    self.best_params_ = search_cv.best_params_
+                    if isinstance(self.best_params_, dict):
+                        self.best_params_ = dict(self.best_params_)
+                    print(f"{self.model_name} 最佳超参数: {self.best_params_}")
+                else:
+                    should_tune = False
+
+        if not should_tune:
+            print(f"使用固定参数为 {self.model_name} 进行训练...")
             self.model = RandomForestRegressor(random_state=DEFAULT_RANDOM_STATE, **self.hyperparameters)
             self.model.fit(X_train, y_train)
-            self.best_params_ = self.hyperparameters  # 如果不调优，最佳参数就是初始参数
+            self.best_params_ = self.hyperparameters
 
         print(f"{self.model_name} 训练完成。")
 

@@ -19,7 +19,7 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         - user_request: str (用户的原始自然语言建模请求描述)
         - sg_sign: str (牌号)
         - target_metric: str (目标性能指标)
-        - time_range: str (数据时间范围, e.g., "2023-01-01_to_2023-12-31")
+        - time_range: str (数据时间范围, e.g., "2023-01-01_to_2025-12-31")
         - product_unit_no: str (机组/产线号)
         - st_no: str (出钢记号)
         - 后续逻辑待补充完善
@@ -46,8 +46,10 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         # 1. 数据获取
         print("\n模块1: 数据获取...")
         data_loader = DataLoader(db_config=DB_CONFIG)
-        # raw_data = data_loader.fetch_data(sg_sign, target_metric, time_range, product_unit_no, st_no)
-        raw_data = data_loader.fetch_data_from_excel(sg_sign, target_metric, time_range, product_unit_no, st_no)
+        # 数据库取数
+        raw_data = data_loader.fetch_data(sg_sign, target_metric, time_range, product_unit_no, st_no)
+        # 从excel中取数
+        # raw_data = data_loader.fetch_data_from_excel(sg_sign, target_metric, time_range, product_unit_no, st_no)
         if raw_data is None or raw_data.empty:
             pipeline_recorder.add_stage("data_acquisition", "failed", {"error": "未能获取到数据或数据为空"})
             pipeline_recorder.set_final_status("failed")
@@ -139,56 +141,63 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
             return final_result_package
 
         # 4. 模型选择
-        print("\n模块4: 模型选择...")
-        num_features = X.shape[1]
-        num_samples = X.shape[0]
-        model_selector = ModelSelector(user_request=user_request, target_metric=target_metric,
-                                       num_features=num_features, num_samples=num_samples)
-        selected_models_info, model_selection_log = model_selector.select_model()
+        print("\n模块4: 模型选择与计划制定...")
+        model_selector = ModelSelector(
+            user_request=user_request,
+            target_metric=target_metric,
+            num_features=X.shape[1],
+            num_samples=X.shape[0]
+        )
 
-        if not selected_models_info:  # 如果LLM没有成功推荐任何模型
-            pipeline_recorder.add_stage("model_selection", "failed",
-                                        {"log": model_selection_log, "error": "未能选择任何模型。"})
+        automl_plan, model_selection_log = model_selector.select_model_and_plan()
+
+        if not automl_plan or "model_recommendations" not in automl_plan or not automl_plan["model_recommendations"]:
+            pipeline_recorder.add_stage("model_selection_planning", "failed",
+                                        {"log": model_selection_log, "error": "未能生成任何有效的AutoML计划。"})
             pipeline_recorder.set_final_status("failed")
-            final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
-            return final_result_package
-        pipeline_recorder.add_stage("model_selection", "success",
-                                    {"selected_models_summary": selected_models_info, "log": model_selection_log})
+            return ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
+
+        pipeline_recorder.add_stage("model_selection_planning", "success",
+                                    {"model_plan": automl_plan, "log": model_selection_log})
 
         # 5. Pipeline构建 (此处简化为记录选择的模型和参数)
         # 实际的scikit-learn Pipeline对象可以将预处理器和模型串联起来
-        # 这里我们只选择一个模型进行训练 (例如，LLM推荐的第一个，或基于某种策略选择)
-        # 为简单起见，我们选择推荐列表中的第一个模型
-        chosen_model_name = list(selected_models_info.keys())[0]
-        chosen_model_details = selected_models_info[chosen_model_name]
-        pipeline_recorder.add_stage("pipeline_construction_logic", "success",
-                                    {"chosen_model_for_training": chosen_model_name,
-                                     "hyperparameter_suggestions": chosen_model_details.get(
-                                         "hyperparameter_suggestions")})
+        # 目前只选择一个模型进行训练 (例如，系统推荐的第一个，或基于某种策略选择)
+        # 简单开始，选择推荐列表中的第一个模型
+        # 从计划中提取信息
+        plan_details = automl_plan["model_plan"]
+        model_recommendations = automl_plan["model_recommendations"]
 
-        # 6. 模型训练与评估
+        # 简单策略：选择推荐列表中的第一个模型进行训练
+        chosen_model_name = list(model_recommendations.keys())[0]
+        chosen_model_info = model_recommendations[chosen_model_name]
+        data_split_ratio = plan_details.get("data_split_ratio", 0.2)  # 使用计划的划分比例，提供默认值
+        hpo_config = plan_details.get("hpo_config", {"method": "RandomizedSearchCV", "n_iter": 30})  # 使用计划的HPO配置
+
+        pipeline_recorder.add_stage("decision_making", "success",
+                                    {"chosen_model": chosen_model_name,
+                                     "data_split_ratio": data_split_ratio,
+                                     "hpo_config": hpo_config})
+
         print(f"\n模块6: 模型训练与评估 (模型: {chosen_model_name})...")
         trainer = ModelTrainer(
             selected_model_name=chosen_model_name,
-            model_hyperparams_suggestions=chosen_model_details.get("hyperparameter_suggestions", {})
+            model_info=chosen_model_info,
+            hpo_config=hpo_config
         )
-        # 决定是否调优，可以基于LLM的建议或一个固定策略
-        # 此处简单地总是尝试调优，如果LLM提供了参数范围的话
-        should_tune = bool(chosen_model_details.get("hyperparameter_suggestions"))
-        trainer.train_and_evaluate(X.copy(), y.copy(), tune_hyperparameters=should_tune)  # 使用副本
+        # 将动态的划分比例传入
+        trainer.train_and_evaluate(X.copy(), y.copy(), test_size=data_split_ratio)
 
         pipeline_recorder.add_stage("model_training_evaluation",
                                     "success" if trainer.evaluation_results else "failed",
-                                    {"training_log": trainer.training_log,
-                                     "evaluation_metrics": trainer.evaluation_results},
-                                    {"trained_model_name": chosen_model_name})
+                                    {"training_log": trainer.training_log, "evaluation_metrics": trainer.evaluation_results})
 
-        if not trainer.evaluation_results:  # 如果训练或评估失败
+        if not trainer.evaluation_results:
+            # 错误处理
             pipeline_recorder.set_final_status("failed")
-            final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
             # 可以在这里保存pipeline摘要
             pipeline_recorder.save_pipeline_summary()
-            return final_result_package
+            return {"status": "failed", "error": "模型训练或评估失败。"}
 
         # 7. 结果汇总
         print("\n模块7: 结果汇总...")
@@ -199,7 +208,7 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         result_handler.add_model_details(
             model_name=chosen_model_name,
             best_hyperparams=trainer.model_instance.best_params_ if trainer.model_instance else None
-            # model_object_ref: 实际可能会保存模型到文件并记录路径
+            # model_object_ref: 实际保存模型到文件并记录路径
         )
         result_handler.add_evaluation_metrics(metrics=trainer.evaluation_results)
         result_handler.add_feature_importances(importances=trainer.feature_importances)

@@ -6,6 +6,11 @@ from config import MODEL_SELECTION_KB_NAME, HISTORICAL_CASES_KB_NAME
 
 
 class ModelSelector:
+    """
+    为AutoML流程生成一个完整的算法选择计划。
+    该计划包括数据划分策略、超参数优化(HPO)方法、推荐的模型及其超参数范围。
+    """
+
     def __init__(self, user_request: str, target_metric: str, num_features: int, num_samples: int):
         """
         初始化模型选择器。
@@ -22,179 +27,203 @@ class ModelSelector:
         self.num_samples = num_samples
         self.ms_kb_service = KnowledgeBaseService(MODEL_SELECTION_KB_NAME)
         # self.history_kb_service = KnowledgeBaseService(HISTORICAL_CASES_KB_NAME)
-        self.available_models = {  # AutoML系统当前支持的回归模型算法库
+
+        # 系统当前支持的组件
+        self.available_models = {
             "RandomForestRegressor": {
-                "description": "随机森林回归器，基于决策树的集成学习方法，鲁棒性较好。",
+                "description": "随机森林回归器，基于决策树的集成学习方法，鲁棒性较好，不易过拟合。",
                 "hyperparameters": ["n_estimators", "max_depth", "min_samples_split", "min_samples_leaf"]
             },
             "XGBoostRegressor": {
                 "description": "XGBoost回归器，梯度提升框架的高效实现，通常性能优越但需要仔细调参。",
                 "hyperparameters": ["n_estimators", "learning_rate", "max_depth", "subsample", "colsample_bytree"]
             },
-            # "LinearRegression": { # 后续添加更多模型
-            #     "description": "线性回归模型，简单快速，适用于线性关系数据。"
-            # },
+        }
+        self.available_hpo_methods = {
+            "GridSearchCV": {
+                "description": "网格搜索。尝试所有给定的超参数组合，精度高但计算成本巨大。仅适用于超参数组合总数非常少（如<50）的场景。"
+            },
+            "RandomizedSearchCV": {
+                "description": "随机搜索。在给定的参数空间中随机采样指定次数(n_iter)的组合。在较大搜索空间中，通常能以更少的计算成本找到较好的参数组合。"
+            },
+            "BayesianOptimization": {
+                "description": "贝叶斯优化。使用高斯过程等代理模型来评估最有希望的超参数组合，从而更智能地探索搜索空间。在寻找最优解方面通常比随机搜索更高效。是大多数情况下的首选。"
+            }
         }
 
     def _get_knowledge_snippets(self, context_query: str, k: int = 2) -> str:
-        """从模型选择和历史案例知识库检索信息。"""
+        """从知识库中检索相关信息片段。"""
         ms_snippets = self.ms_kb_service.search(context_query, k=k)
-        # history_snippets = self.history_kb_service.search(context_query, k=k)
-
-        formatted_snippets = "\n模型选择知识库参考:\n"
+        formatted_snippets = "\n[知识库参考信息]\n"
         if ms_snippets:
             for i, snippet in enumerate(ms_snippets):
                 meta = snippet.get('metadata', {})
                 formatted_snippets += f"{i + 1}. {meta}\n"
         else:
-            formatted_snippets += "未从模型选择知识库中检索到相关信息。\n"
-
-        # formatted_snippets += "\n历史案例参考 (关于模型选择):\n" if history_snippets: for i, snippet in enumerate(
-        # history_snippets): meta = snippet.get('metadata', {}) # 假设历史案例元数据中有模型选择相关信息 formatted_snippets += f"{i +
-        # 1}. 案例 {meta.get('case_id', '未知')}: 使用模型 {meta.get('model_used', '未知')}, 原因: {meta.get(
-        # 'reason_for_model_choice', '无')}\n" else: formatted_snippets += "未从历史案例知识库中检索到相关模型选择信息。\n"
-
+            formatted_snippets += "未从知识库中检索到相关信息。\n"
         return formatted_snippets
 
-    def _generate_llm_prompt_for_model_selection(self) -> Tuple[str, str]:
-        """为模型选择生成系统和用户提示词。"""
+    def _generate_llm_prompt(self) -> Tuple[str, str]:
+        """为生成完整的AutoML计划生成系统和用户提示词。"""
         system_prompt = f"""
-你是一位资深的机器学习专家，尤其擅长为工业领域的回归问题选择合适的预测模型。
-你的任务是根据用户需求、数据概况（样本量、特征数）、以及从知识库中检索到的模型选择经验和历史案例，推荐一个或多个合适的回归模型，并给出初步的超参数建议范围。
+你是一位资深的AutoML专家，任务是为给定的回归问题设计一个完整的、智能化的建模计划。
+你需要根据用户的原始请求、数据概况和知识库信息，决定数据划分策略、超参数优化(HPO)方法，并从系统支持的模型列表中推荐一个或多个适合的模型及其超参数搜索范围。
 
-用户原始请求摘要: "{self.user_request}"
-目标性能指标: "{self.target_metric}" (这是一个回归问题)
-数据概况: 样本数量为{self.num_samples}条, 特征数量为{self.num_features}个
+**决策依据:**
+1.  **用户意图**: 用户的原始请求是最高优先级。
+    - 若用户强调“快速验证”、“要快”，应选择计算成本较低的策略，如 `RandomizedSearchCV` 并设置一个较小的迭代次数 `n_iter` (例如 20-35)。
+    - 若用户强调“精度”、“效果最好”，应选择更高效的 `RandomizedSearchCV` 或 `BayesianOptimization` 并设置一个较大的迭代次数 `n_iter` (例如 40-60)。
+    - 对于一般性请求，`BayesianOptimization` 是一个很好的平衡选择，`n_iter` 可以设为 (例如 30-40)。
+2.  **数据规模**:
+    - **数据划分 (`data_split_ratio`)**: 对于小样本量(如 < 500)，可以考虑较小的测试集比例(如0.15)以保留更多训练数据。对于大样本，0.2-0.3是常规选择。
+    - **HPO方法**: 对于特征多、样本量大的情况，`GridSearchCV` 几乎不可行。`RandomizedSearchCV` 和 `BayesianOptimization` 是实际的选择。
+3.  **模型与参数**: 推荐的超参数必须是数值型，并以范围形式给出。
 
-当前系统支持的回归模型包括:
+**可用组件:**
+- **支持的模型:**
 {json.dumps(self.available_models, indent=2, ensure_ascii=False)}
+- **支持的HPO方法:**
+{json.dumps(self.available_hpo_methods, indent=2, ensure_ascii=False)}
 
-决策依据:
-- 数据规模: 样本量和特征数对模型选择有重要影响。
-- 用户偏好: 用户优先级最高，如果用户请求中明确指定或排除了某些模型，请优先予以考虑。
-- 模型特性: 例如，随机森林对过拟合不敏感，XGBoost通常性能更好但需要调参。
-- 知识库与历史案例: 参考相似问题或数据规模下表现良好的模型。
+**输出格式要求:**
+你必须严格按照以下JSON格式返回你的完整计划。JSON对象必须包含 "model_plan" 和 "model_recommendations" 两个顶级键。
 
-输出格式要求:
-严格按照以下JSON格式返回你的建议。返回一个字典，键为推荐的模型名称 (必须是上述支持的模型之一)，值为一个包含 "reason" (选择理由) 和 "hyperparameter_suggestions" (超参数建议范围或初步值列表) 的字典。
-如果推荐多个模型，请都包含在内。
-
-示例JSON输出:
 {{
-  "RandomForestRegressor": {{
-    "reason": "适用于当前样本量和特征数，鲁棒性较好，不易过拟合。",
-    "hyperparameter_suggestions": {{
-      "n_estimators": [50, 200],
-      "max_depth": [5, 10, 15, null],
-      "min_samples_split": [2, 5, 10]
+  "model_plan": {{
+    "reason": "简要说明你制定此计划的总体理由，特别是HPO方法和迭代次数的选择依据。",
+    "data_split_ratio": <一个浮点数, e.g., 0.2>,
+    "hpo_config": {{
+      "method": "<从 'GridSearchCV', 'RandomizedSearchCV', 'BayesianOptimization' 中选择>",
+      "n_iter": <一个整数, 代表 'RandomizedSearchCV' 的 `n_iter` 或 'BayesianOptimization' 的 `n_trials`。默认值：快速=30, 常规=45, 精确=60。如果选择 'GridSearchCV', 此项为 null>,
+      "cv_folds": <一个整数, 交叉验证的折数, 默认为3>,
+      "scoring_metric": "<用于优化的评估指标, e.g., 'neg_mean_squared_error'>"
     }}
   }},
-  "XGBoostRegressor": {{
-    "reason": "可能获得更高精度，但需要仔细调参。适合在有足够算力时尝试。",
-    "hyperparameter_suggestions": {{
-      "n_estimators": [50, 200],
-      "learning_rate": [0.01, 0.05, 0.1],
-      "max_depth": [3, 5, 7]
-    }}
+  "model_recommendations": {{
+    "模型名称1": {{
+      "reason": "简要说明选择此模型的具体理由。",
+      "hyperparameter_suggestions": {{
+        "整数型参数": [<下界整数>, <上界整数>],
+        "浮点型参数": [<下界浮点数>, <上界浮点数>],
+        "对数分布的浮点型参数": [<下界浮点数>, <上界浮点数>, "log"]
+      }}
+    }},
+    "模型名称2": {{ ... }}
   }}
 }}
-如果只推荐一个模型，JSON中就只包含那一个模型的条目。
-请确保你的回复是且仅是一个合法的JSON对象。不要包含任何解释性文字或代码块标记。
+
+**超参数范围说明:**
+- **整数型**: `["param_name": [min, max]]` -> 例如 `"n_estimators": [50, 200]`
+- **浮点型 (线性分布)**: `["param_name": [min, max]]` -> 例如 `"subsample": [0.7, 1.0]`
+- **浮点型 (对数分布)**: `["param_name": [min, max, "log"]]` -> 例如 `"learning_rate": [0.01, 0.2, "log"]`。这对于学习率等跨越数量级的参数特别有效。
+
+确保你的回复是且仅是一个合法的、不含任何额外解释性文本或代码块标记的JSON对象。
 """
-        kb_query_context = f"模型选择咨询：用户请求 '{self.user_request}', 目标 '{self.target_metric}', 样本数 {self.num_samples}, 特征数 {self.num_features}。寻求回归模型建议。"
+        kb_query_context = f"AutoML计划制定咨询：用户请求 '{self.user_request}', 目标 '{self.target_metric}', 样本数 {self.num_samples}, 特征数 {self.num_features}。"
         knowledge_snippets = self._get_knowledge_snippets(kb_query_context)
 
         user_prompt = f"""
-请为以下回归任务选择合适的模型并提供初步的超参数建议。
+请为以下回归任务制定一个完整的AutoML模型和超参数优化计划。
 
-用户原始请求:
+**用户原始请求:**
 {self.user_request}
 
-任务概况:
+**任务概况:**
 - 目标指标: {self.target_metric}
 - 样本数量: {self.num_samples}
 - 特征数量: {self.num_features}
 
 {knowledge_snippets}
 
-请严格按照系统提示中要求的JSON格式输出你的模型选择和超参数建议。
-选择的模型必须是系统支持的模型之一。
+请严格按照系统提示中要求的JSON格式输出你的计划。
 """
         return system_prompt, user_prompt
 
-    def select_model(self) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    def _get_default_plan(self, reason: str) -> Dict[str, Any]:
+        """在LLM调用失败时，提供一个默认的后备计划。"""
+        print(f"警告: 正在启用默认后备计划。原因: {reason}")
+        return {
+            "model_plan": {
+                "reason": "由于局部智能体在模型算法方案制定过程中失败或响应无效而导致的缺省计划。",
+                "data_split_ratio": 0.2,
+                "hpo_config": {
+                    "method": "RandomizedSearchCV",
+                    "n_iter": 30,
+                    "cv_folds": 3,
+                    "scoring_metric": "neg_mean_squared_error"
+                }
+            },
+            "model_recommendations": {
+                "RandomForestRegressor": {
+                    "reason": "默认回退模型，通常稳健且表现良好。",
+                    "hyperparameter_suggestions": {
+                        "n_estimators": [50, 150],
+                        "max_depth": [5, 20],
+                        "min_samples_split": [2, 10]
+                    }
+                }
+            }
+        }
+
+    def select_model_and_plan(self) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """
-        执行模型选择的主流程。
+        执行AutoML计划生成的主流程。
 
         返回:
-        - selected_models_info: 一个字典，包含LLM推荐的模型及其超参数建议和理由。
-        - selection_log: 模型选择过程的日志。
+        - final_plan: 一个字典，包含完整的算法模型计划。
+        - selection_log: 过程日志。
         """
-        print("\n--- 开始模型选择 ---")
+        print("\n--- 开始生成AutoML计划 ---")
         log = []
+        final_plan = {}
+        llm_response_str = ""
 
-        # 1. LLM分析任务和知识库，推荐模型
-        print("步骤1: LLM推荐模型及超参数...")
-        system_prompt, user_prompt = self._generate_llm_prompt_for_model_selection()
-
-        llm_response_str = call_llm(system_prompt, user_prompt)
-        # print(f"\nLLM原始响应 (模型选择):\n{llm_response_str}")
-
-        selected_models_info = {}
         try:
+            system_prompt, user_prompt = self._generate_llm_prompt()
+            llm_response_str = call_llm(system_prompt, user_prompt)
+
             parsed_response = json.loads(llm_response_str)
-            if not isinstance(parsed_response, dict):
-                raise ValueError("大语言模型在算法模型选择过程中的响应不是一个字典。")
 
-            for model_name, model_info in parsed_response.items():
+            print("算法模型选择过程中的原始响应", parsed_response)
+            # 验证顶层结构
+            if "model_plan" not in parsed_response or "model_recommendations" not in parsed_response:
+                raise ValueError("响应缺少 'model_plan' 或 'model_recommendations' 顶级键。")
+
+            # 验证并提取模型推荐
+            recommendations = parsed_response.get("model_recommendations", {})
+            if not isinstance(recommendations, dict) or not recommendations:
+                raise ValueError("响应中的 'model_recommendations' 必须是一个非空字典。")
+
+            valid_recommendations = {}
+            for model_name, model_info in recommendations.items():
                 if model_name not in self.available_models:
-                    print(f"警告: 大语言模型推荐了系统不支持的模型 '{model_name}'，将被忽略。")
-                    log.append({"warning": f"LLM recommended unsupported model: {model_name}"})
-                    continue
-                if not isinstance(model_info,
-                                  dict) or "reason" not in model_info or "hyperparameter_suggestions" not in model_info:
-                    raise ValueError(f"模型 '{model_name}' 的信息格式不正确。")
-                selected_models_info[model_name] = model_info
+                    log.append({"warning": f"LLM recommended an unsupported model: {model_name}"})
+                    continue  # 忽略不支持的模型
+                if isinstance(model_info,
+                              dict) and "reason" in model_info and "hyperparameter_suggestions" in model_info:
+                    valid_recommendations[model_name] = model_info
+                else:
+                    log.append({"warning": f"LLM provided malformed info for model: {model_name}"})
 
-            if not selected_models_info:  # 如果所有推荐模型都被过滤掉了
-                log.append({"error": "LLM did not recommend any supported models or response was invalid."})
-                print("错误: LLM未能推荐任何受支持的模型，或响应无效。")
-                # 选择一个默认模型作为回退
-                default_model_name = "RandomForestRegressor"
-                selected_models_info[default_model_name] = {
-                    "reason": "Default fallback model due to LLM failure.",
-                    "hyperparameter_suggestions": {"n_estimators": [100], "max_depth": [10]}
-                }
-                print(f"回退到默认模型: {default_model_name}")
+            if not valid_recommendations:
+                raise ValueError("LLM未提供任何受支持且格式正确的模型推荐。")
 
-            log.append({
-                "step": "llm_recommend_models",
-                "status": "success" if selected_models_info else "partial_success",
-                "recommendations": selected_models_info
-            })
-            print(f"LLM模型选择建议: {list(selected_models_info.keys())}")
-
-        except json.JSONDecodeError as e:
-            print(f"错误: LLM返回的模型选择建议不是有效的JSON: {e}")
-            print(f"LLM原始输出: {llm_response_str}")
-            log.append({"step": "llm_recommend_models", "status": "failed", "error": f"Invalid JSON: {e}",
-                        "raw_response": llm_response_str})
-            # 回退策略
-        except ValueError as e:
-            print(f"错误: LLM返回的模型选择建议结构不正确: {e}")
-            print(f"LLM原始输出: {llm_response_str}")
-            log.append({"step": "llm_recommend_models", "status": "failed", "error": f"Invalid structure: {e}",
-                        "raw_response": llm_response_str})
-            # 回退策略
-
-        if not selected_models_info and not any(
-                "error" in l for l in log if l.get("step") == "llm_recommend_models"):  # 如果解析成功但没有有效模型
-            print("警告: LLM未能提供有效的模型建议。将使用默认模型 RandomForestRegressor。")
-            selected_models_info["RandomForestRegressor"] = {
-                "reason": "Default fallback model as LLM provided no valid suggestions.",
-                "hyperparameter_suggestions": {"n_estimators": [100, 200], "max_depth": [5, 10, None]}
+            # 如果一切顺利，构建最终计划
+            final_plan = {
+                "model_plan": parsed_response["model_plan"],
+                "model_recommendations": valid_recommendations
             }
-            log.append({"step": "fallback_model_selection", "status": "success", "model": "RandomForestRegressor"})
+            log.append({"step": "llm_generate_plan", "status": "success", "plan": final_plan})
+            print(
+                f"成功生成计划。HPO方法: {final_plan['model_plan']['hpo_config']['method']}. 推荐模型: {list(final_plan['model_recommendations'].keys())}")
 
-        print("--- 模型选择完成 ---")
-        return selected_models_info, log
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            error_msg = f"解析或验证LLM响应失败: {e}"
+            print(f"错误: {error_msg}")
+            print(f"LLM原始输出: {llm_response_str if llm_response_str else 'N/A'}")
+            log.append({"step": "llm_generate_plan", "status": "failed", "error": error_msg})
+            final_plan = self._get_default_plan(error_msg)
+            log.append({"step": "fallback_plan_activated", "status": "success"})
+
+        print("--- AutoML计划生成完成 ---")
+        return final_plan, log
