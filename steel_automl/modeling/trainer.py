@@ -5,7 +5,7 @@ from config import DEFAULT_RANDOM_STATE
 from steel_automl.modeling.algorithms.random_forest import RandomForestModel
 from steel_automl.modeling.algorithms.xgboost_model import XGBoostModel
 
-# 模型类映射表
+# 模型算法库中模型类映射表
 MODEL_CLASSES = {
     "RandomForestRegressor": RandomForestModel,
     "XGBoostRegressor": XGBoostModel,
@@ -46,7 +46,7 @@ class ModelTrainer:
         参数:
         - X: 特征DataFrame。
         - y: 目标Series。
-        - test_size: 从LLM计划中动态获取的测试集划分比例。
+        - test_size: 从计划中动态获取的测试集划分比例。
         """
         print(f"\n--- 开始训练模型: {self.model_name} ---")
         log_entry = {"step": "data_split", "test_size": test_size, "random_state": DEFAULT_RANDOM_STATE}

@@ -8,9 +8,9 @@ from skopt import BayesSearchCV
 from skopt.space import Real, Integer, Categorical
 from scipy.stats import randint, uniform
 from config import DEFAULT_RANDOM_STATE
+from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 
-# 尝试导入torch以检测GPU，这是一个常用的方法
-# 即使项目其他地方不用torch，为了可靠的GPU检测也值得引入
+# 尝试导入torch以检测GPU
 try:
     import torch
 
@@ -232,8 +232,18 @@ class XGBoostModel:
             mse = mean_squared_error(y_test, predictions)
             rmse = np.sqrt(mse)
             r2 = r2_score(y_test, predictions)
-            print(f"{self.model_name} 评估结果: MSE={mse:.4f}, RMSE={rmse:.4f}, R2={r2:.4f}")
-            return {"mse": mse, "rmse": rmse, "r2": r2}
+            mae = mean_absolute_error(y_test, predictions)
+
+            print(f"{self.model_name} 评估结果: "
+                  f"MSE={mse:.4f}, RMSE={rmse:.4f}, R2={r2:.4f}, "
+                  f"MAE={mae:.4f}")
+
+            return {
+                "MSE": mse,
+                "RMSE": rmse,
+                "R2": r2,
+                "MAE": mae,
+            }
         return None
 
     def get_feature_importances(self, feature_names: List[str]) -> Optional[pd.Series]:

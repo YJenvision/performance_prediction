@@ -53,7 +53,8 @@ class FeatureGenerator:
     def _generate_llm_prompt_for_fe_plan(self, current_features_str: str) -> Tuple[str, str]:
         """为特征工程计划生成系统和用户提示词。"""
         """
-        6.  'custom_code_feature': 如果标准方法不适用，你可以提供Python代码片段来生成新特征。代码片段应能接收整个DataFrame并返回一个包含新特征的Series或DataFrame。新特征的列名应在 'params' 的 'new_column_names' (List[str]) 中指定。
+        暂时没有设定自定义代码片段的功能，后续考虑实现。需要注意代码安全。
+          'custom_code_feature': 如果标准方法不适用，你可以提供Python代码片段来生成新特征。代码片段应能接收整个DataFrame并返回一个包含新特征的Series或DataFrame。新特征的列名应在 'params' 的 'new_column_names' (List[str]) 中指定。
         """
         system_prompt = f"""
 你是一位顶级的钢铁材料科学家和数据特征工程师，精通从现有数据中挖掘和创造有价值的预测特征。
@@ -143,53 +144,6 @@ class FeatureGenerator:
                 if operation == "no_action":
                     print("无特征工程操作。")
                     step_log["status"] = "no_action"
-                elif operation == "custom_code_feature":
-                    code_snippet_str = params.get("code_snippet")
-                    new_col_names = params.get("new_column_names")  # 应该是列表
-                    if code_snippet_str and new_col_names and isinstance(new_col_names, list) and len(
-                            new_col_names) > 0:
-                        try:
-                            # IMPORTANT: Executing arbitrary code from LLM is a security risk.
-                            if "lambda df:" in code_snippet_str:  # 简单检查是否为lambda df: ...
-                                custom_func = eval(code_snippet_str, {"pd": pd, "np": np,
-                                                                      "df_copy": df_engineered.copy()})  # 允许使用pd, np, 和df的副本
-                                new_feature_series_or_df = custom_func(df_engineered.copy())  # 传递DataFrame副本
-
-                                if isinstance(new_feature_series_or_df, pd.Series):
-                                    if len(new_col_names) == 1:
-                                        df_engineered[new_col_names[0]] = new_feature_series_or_df
-                                        print(f"通过自定义代码生成了新特征: {new_col_names[0]}")
-                                        step_log["status"] = "success"
-                                    else:
-                                        step_log[
-                                            "error"] = "Custom code returned a Series, but multiple new_column_names were specified."
-                                        print(f"错误: 自定义代码返回Series，但指定了多个新列名: {new_col_names}")
-                                elif isinstance(new_feature_series_or_df, pd.DataFrame):
-                                    # 确保返回的DataFrame的列名与new_col_names匹配或可以对应
-                                    if len(new_col_names) == len(new_feature_series_or_df.columns):
-                                        renamed_cols = dict(zip(new_feature_series_or_df.columns, new_col_names))
-                                        new_feature_df_renamed = new_feature_series_or_df.rename(columns=renamed_cols)
-                                        for col_name in new_col_names:
-                                            df_engineered[col_name] = new_feature_df_renamed[col_name]
-                                        print(f"通过自定义代码生成了新特征: {new_col_names}")
-                                        step_log["status"] = "success"
-                                    else:
-                                        step_log[
-                                            "error"] = "Mismatch between custom code DataFrame columns and specified new_column_names."
-                                        print(f"错误: 自定义代码返回DataFrame的列数与指定新列名数量不符。")
-                                else:
-                                    step_log["error"] = "Custom code did not return a Pandas Series or DataFrame."
-                                    print(f"错误: 自定义代码未返回Series或DataFrame。")
-                            else:
-                                print(
-                                    f"警告: 自定义特征代码不是预期的 'lambda df:' 格式，执行被跳过。代码: {code_snippet_str}")
-                                step_log["error"] = "Custom code execution skipped (not a 'lambda df:' expression)."
-                        except Exception as e:
-                            print(f"执行自定义特征代码失败: {e}")
-                            step_log["error"] = str(e)
-                    else:
-                        print(f"警告: 自定义特征代码片段或新列名为空/格式不正确。")
-                        step_log["error"] = "Custom code snippet or new_column_names are invalid."
 
                 elif operation in FEATURE_ENGINEERING_METHODS_MAP:
                     method_to_call = FEATURE_ENGINEERING_METHODS_MAP[operation]
@@ -242,7 +196,7 @@ class FeatureGenerator:
 
         current_features_str = ", ".join(current_feature_names)
 
-        # 1. LLM分析现有特征和知识库，制定特征工程计划
+        # 1. 分析现有特征和知识库，制定特征工程计划
         print("步骤1: LLM制定特征工程计划...")
         system_prompt, user_prompt = self._generate_llm_prompt_for_fe_plan(current_features_str)
 
@@ -305,7 +259,7 @@ class FeatureGenerator:
 
 
 if __name__ == '__main__':
-    # 假设这是从预处理步骤得到的DataFrame
+    # 测试DataFrame
     data = {
         'feature_C': np.array([0.1, 0.15, 0.12, 0.18, 0.11]),  # 确保是numpy array或Series
         'feature_Mn': np.array([0.5, 0.6, 0.55, 0.65, 0.52]),
