@@ -3,7 +3,7 @@ from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.metrics import mean_squared_error, r2_score
 import numpy as np
 import pandas as pd
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Tuple, Optional, List
 from skopt import BayesSearchCV
 from skopt.space import Real, Integer, Categorical
 from scipy.stats import randint, uniform
@@ -225,26 +225,56 @@ class XGBoostModel:
 
         return predictions
 
-    def evaluate(self, X_test: pd.DataFrame, y_test: pd.Series) -> Optional[Dict[str, float]]:
-        """在测试集上评估模型性能。"""
-        predictions = self.predict(X_test)
-        if predictions is not None:
-            mse = mean_squared_error(y_test, predictions)
-            rmse = np.sqrt(mse)
-            r2 = r2_score(y_test, predictions)
-            mae = mean_absolute_error(y_test, predictions)
+    def evaluate(self, X_data: pd.DataFrame, y_data: pd.Series, acceptable_error: Optional[Dict[str, Any]] = None) -> \
+            Tuple[Optional[Dict[str, float]], Optional[np.ndarray]]:
+        """
+        评估模型性能，并返回指标和预测结果。
 
-            print(f"{self.model_name} 评估结果: "
-                  f"MSE={mse:.4f}, RMSE={rmse:.4f}, R2={r2:.4f}, "
-                  f"MAE={mae:.4f}")
+        参数:
+        - X_data: 特征数据。
+        - y_data: 真实标签数据。
+        - acceptable_error: 包含误差类型和值的字典。
 
-            return {
-                "MSE": mse,
-                "RMSE": rmse,
-                "R2": r2,
-                "MAE": mae,
-            }
-        return None
+        返回:
+        - 一个包含评估指标的字典。
+        - 预测结果的Numpy数组。
+        """
+        predictions = self.predict(X_data)
+        if predictions is None:
+            return None, None
+
+        mse = mean_squared_error(y_data, predictions)
+        rmse = np.sqrt(mse)
+        r2 = r2_score(y_data, predictions)
+        mae = mean_absolute_error(y_data, predictions)
+
+        metrics = {"MSE": mse, "RMSE": rmse, "R2": r2, "MAE": mae}
+
+        if acceptable_error:
+            error_type = acceptable_error.get("type", "percentage")
+            error_value = acceptable_error.get("value", 5)
+
+            abs_error = np.abs(predictions - y_data)
+
+            if error_type == 'percentage':
+                # 避免y_true为0时的除法错误
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    # Create a boolean mask for y_data != 0
+                    non_zero_mask = y_data != 0
+                    # Initialize proportion array with False
+                    is_within_bounds = np.zeros_like(y_data, dtype=bool)
+                    # Calculate proportion only where y_data is not zero
+                    is_within_bounds[non_zero_mask] = \
+                        (abs_error[non_zero_mask] / y_data[non_zero_mask]) <= (error_value / 100)
+                    # For cases where y_data is zero, check against absolute error
+                    is_within_bounds[~non_zero_mask] = abs_error[~non_zero_mask] <= 0  # Or some small tolerance
+            else:  # value
+                is_within_bounds = abs_error <= error_value
+
+            proportion = np.mean(is_within_bounds)
+            metrics["proportion_in_acceptable_range"] = proportion
+
+        return metrics, predictions
 
     def get_feature_importances(self, feature_names: List[str]) -> Optional[pd.Series]:
         """获取并返回模型的特征重要性。"""

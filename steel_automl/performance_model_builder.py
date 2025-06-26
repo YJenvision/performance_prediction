@@ -69,8 +69,7 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         # 2. 数据预处理
         print("\n模块2: 数据预处理...")
         preprocessor = DataPreprocessor(user_request=user_request, target_metric=target_metric)
-        df_processed, preprocessing_steps, fitted_preproc_objects = preprocessor.preprocess_data(
-            raw_data.copy())  # 使用副本
+        df_processed, preprocessing_steps, fitted_preproc_objects = preprocessor.preprocess_data(raw_data.copy())
 
         # 检查预处理步骤中是否有严重错误导致无法继续
         # (一个简单的检查：如果df_processed为空但原始数据不为空，或者关键步骤失败)
@@ -108,7 +107,7 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         preprocessed_feature_cols = [col for col in df_processed.columns if col != target_metric]
         feature_generator = FeatureGenerator(user_request=user_request, target_metric=target_metric,
                                              preprocessed_columns=preprocessed_feature_cols)
-        df_engineered, fe_steps, fitted_fe_objects = feature_generator.generate_features(df_processed.copy())  # 使用副本
+        df_engineered, fe_steps, fitted_fe_objects = feature_generator.generate_features(df_processed.copy())
 
         # 类似地检查特征工程的关键失败
         critical_fe_failed = False
@@ -135,12 +134,12 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
 
         if X.empty:
             pipeline_recorder.add_stage("data_preparation_for_modeling", "failed",
-                                        {"error": "特征集X为空，无法进行模型训练。可能所有特征都被删除或处理错误。"})
+                                        {"error": "特征集X为空，无法进行模型训练。"})
             pipeline_recorder.set_final_status("failed")
             final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
             return final_result_package
 
-        # 4. 模型选择
+        # 4. 模型选择与计划制定
         print("\n模块4: 模型选择与计划制定...")
         model_selector = ModelSelector(
             user_request=user_request,
@@ -157,6 +156,9 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
             pipeline_recorder.set_final_status("failed")
             return ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
 
+        # 将用户请求参数也加入到automl_plan中，便于后续模块（如trainer）使用
+        automl_plan["user_request_details"] = request_params
+
         pipeline_recorder.add_stage("model_selection_planning", "success",
                                     {"model_plan": automl_plan, "log": model_selection_log})
 
@@ -171,8 +173,8 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         # 简单策略：选择推荐列表中的第一个模型进行训练
         chosen_model_name = list(model_recommendations.keys())[0]
         chosen_model_info = model_recommendations[chosen_model_name]
-        data_split_ratio = plan_details.get("data_split_ratio", 0.2)  # 使用计划的划分比例，提供默认值
-        hpo_config = plan_details.get("hpo_config", {"method": "RandomizedSearchCV", "n_iter": 30})  # 使用计划的HPO配置
+        data_split_ratio = plan_details.get("data_split_ratio", 0.2)
+        hpo_config = plan_details.get("hpo_config", {"method": "RandomizedSearchCV", "n_iter": 30})
 
         pipeline_recorder.add_stage("decision_making", "success",
                                     {"chosen_model": chosen_model_name,
@@ -183,14 +185,16 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         trainer = ModelTrainer(
             selected_model_name=chosen_model_name,
             model_info=chosen_model_info,
-            hpo_config=hpo_config
+            hpo_config=hpo_config,
+            automl_plan=automl_plan  # **[MODIFIED]** 传递完整的automl_plan
         )
         # 将动态的划分比例传入
         trainer.train_and_evaluate(X.copy(), y.copy(), test_size=data_split_ratio)
 
         pipeline_recorder.add_stage("model_training_evaluation",
                                     "success" if trainer.evaluation_results else "failed",
-                                    {"training_log": trainer.training_log, "evaluation_metrics": trainer.evaluation_results})
+                                    {"training_log": trainer.training_log,
+                                     "evaluation_metrics": trainer.evaluation_results})
 
         if not trainer.evaluation_results:
             # 错误处理
@@ -210,7 +214,7 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
             best_hyperparams=trainer.model_instance.best_params_ if trainer.model_instance else None
             # model_object_ref: 实际保存模型到文件并记录路径
         )
-        result_handler.add_evaluation_metrics(metrics=trainer.evaluation_results)
+        result_handler.add_evaluation_metrics(metrics=trainer.evaluation_results)  # 评估结果现在包含train/test和图表路径
         result_handler.add_feature_importances(importances=trainer.feature_importances)
 
         final_result_package = result_handler.compile_final_result()
@@ -224,8 +228,11 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         print(f"总耗时: {total_duration:.2f} 秒")
         print(f"最终状态: {final_result_package.get('status')}")
         if final_result_package.get('status') == 'success':
+            test_metrics = final_result_package.get('evaluation_metrics', {}).get('test', {})
             print(f"最终模型: {final_result_package.get('selected_model', {}).get('model_name')}")
-            print(f"评估R2分数: {final_result_package.get('evaluation_metrics', {}).get('r2')}")
+            print(f"测试集 R2 分数: {test_metrics.get('r2')}")
+            print(f"测试集 符合率: {test_metrics.get('proportion_in_acceptable_range')}")
+            print(f"测试集 结果图: {test_metrics.get('prediction_plot_path')}")
 
         return final_result_package
 

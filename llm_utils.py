@@ -6,7 +6,7 @@ import config
 
 def call_llm(system_prompt: str, user_prompt: str, temperature: float = 0.3, model: str = "ds_R1") -> str:
     """
-    调用本地部署的LLM模型。
+    调用LLM。
 
     参数:
     - system_prompt: 系统提示词。
@@ -95,13 +95,10 @@ def get_embedding(text: str) -> np.ndarray:
 
 
 if __name__ == '__main__':
-    # 测试大语言模型调用
-    test_system_prompt = "你是一个有用的人工智能智能体"
-    test_user_prompt = "介绍一下你自己"
-    print(f"测试LLM调用: {call_llm(test_system_prompt, test_user_prompt)}")
 
     # 测试嵌入调用
     test_text_for_embedding = "测试文本嵌入"
     embedding_vector = get_embedding(test_text_for_embedding)
+    print(type(embedding_vector))
     print(f"文本 '{test_text_for_embedding}' 的嵌入向量: {embedding_vector}")
     print(f"向量维度: {len(embedding_vector)}")

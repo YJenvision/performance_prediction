@@ -55,7 +55,7 @@ class DataPreprocessor:
 可用的预处理操作:
 1.  缺失值处理 (存在缺失值的特征列均需进行缺失值处理):
     - 'delete_column': 删除该列 (缺失比例过高时)。
-    - 'delete_rows_with_missing_in_column': 删除在该列有缺失值的行 (缺失比例极低时)。
+    - 'delete_rows_with_missing_in_column': 删除在该列有缺失值的行 (缺失比例非常低时)。
     - 'impute_mean': 均值填充 (数值型)。
     - 'impute_median': 中位数填充 (数值型)。
     - 'impute_most_frequent': 众数填充 (数值型或类别型)。

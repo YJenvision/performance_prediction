@@ -230,7 +230,7 @@ if __name__ == "__main__":
     preprocessing_samples = [
         {
             "text_for_embedding": "成分数据中，元素V含量ELM_V的缺失值通常用0填充，因为该元素含量极低。",
-            "metadata": {"feature": "ELM_V", "strategy": "fill_with_zero", "reason": "该元素含量极低"}
+            "metadata": {"feature": "ELM_V", "strategy": "fill_with_zero", "reason": "该元素在工艺方面含量非常低"}
         }
     ]
     _initialize_sample_kb("data_preprocessing_kb", preprocessing_samples)

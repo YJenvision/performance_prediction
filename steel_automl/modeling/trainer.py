@@ -4,6 +4,7 @@ from typing import Dict, Any, Tuple, List, Optional
 from config import DEFAULT_RANDOM_STATE
 from steel_automl.modeling.algorithms.random_forest import RandomForestModel
 from steel_automl.modeling.algorithms.xgboost_model import XGBoostModel
+from steel_automl.results.visualization import plot_prediction_vs_actual, plot_error_distribution
 
 # 模型算法库中模型类映射表
 MODEL_CLASSES = {
@@ -13,7 +14,8 @@ MODEL_CLASSES = {
 
 
 class ModelTrainer:
-    def __init__(self, selected_model_name: str, model_info: Dict[str, Any], hpo_config: Dict[str, Any]):
+    def __init__(self, selected_model_name: str, model_info: Dict[str, Any], hpo_config: Dict[str, Any],
+                 automl_plan: Dict[str, Any]):
         """
         初始化模型训练器。
 
@@ -21,6 +23,7 @@ class ModelTrainer:
         - selected_model_name: 选择的模型名称。
         - model_info: 包含该模型超参数建议范围的字典。
         - hpo_config: 超参数优化(HPO)的配置。
+        - automl_plan: 包含可接受误差等信息的完整AutoML计划。
         """
         if selected_model_name not in MODEL_CLASSES:
             raise ValueError(f"不支持的模型: {selected_model_name}。")
@@ -29,24 +32,50 @@ class ModelTrainer:
         self.model_class = MODEL_CLASSES[selected_model_name]
         self.hyperparam_suggestions = model_info.get("hyperparameter_suggestions", {})
         self.hpo_config = hpo_config
+        self.acceptable_error = automl_plan.get("model_plan", {}).get("acceptable_error")
+        self.target_metric = automl_plan.get("user_request_details", {}).get("target_metric", "Unknown Target")
 
-        # 初始超参数在这里可以不设置，因为调优流程会直接使用范围
-        self.initial_hyperparams = {}
-
-        self.model_instance = self.model_class(hyperparameters=self.initial_hyperparams)
+        self.model_instance = self.model_class(hyperparameters={})
         self.training_log: List[Dict[str, Any]] = []
-        self.evaluation_results: Optional[Dict[str, float]] = None
+        self.evaluation_results: Dict[str, Any] = {"train": None, "test": None}
         self.trained_model_object = None
         self.feature_importances: Optional[pd.Series] = None
 
+    def _evaluate_and_visualize(self, X_data: pd.DataFrame, y_data: pd.Series, dataset_name: str) -> Tuple[Dict, str]:
+        """
+        封装评估和可视化的通用函数。
+        现在会生成两种图表并返回它们的路径。
+        """
+        metrics, predictions = self.model_instance.evaluate(X_data, y_data, self.acceptable_error)
+
+        if predictions is not None and self.acceptable_error and metrics is not None:
+            # 生成 "预测值 vs 真实值" 图
+            pred_vs_actual_path = plot_prediction_vs_actual(
+                y_true=y_data,
+                y_pred=predictions,
+                acceptable_error=self.acceptable_error,
+                target_metric=self.target_metric,
+                model_name=self.model_name,
+                dataset_name=dataset_name
+            )
+            metrics["prediction_plot_path"] = pred_vs_actual_path
+
+            # 生成 "误差分布" 图
+            error_dist_path = plot_error_distribution(
+                y_true=y_data,
+                y_pred=predictions,
+                acceptable_error=self.acceptable_error,
+                target_metric=self.target_metric,
+                model_name=self.model_name,
+                dataset_name=dataset_name
+            )
+            metrics["error_distribution_plot_path"] = error_dist_path
+
+        return metrics, f"对 {dataset_name} 的评估和可视化完成。"
+
     def train_and_evaluate(self, X: pd.DataFrame, y: pd.Series, test_size: float) -> None:
         """
-        执行模型训练和评估。
-
-        参数:
-        - X: 特征DataFrame。
-        - y: 目标Series。
-        - test_size: 从计划中动态获取的测试集划分比例。
+        执行模型训练和评估，现在包括对训练集和测试集的两种可视化。
         """
         print(f"\n--- 开始训练模型: {self.model_name} ---")
         log_entry = {"step": "data_split", "test_size": test_size, "random_state": DEFAULT_RANDOM_STATE}
@@ -68,19 +97,16 @@ class ModelTrainer:
         # 训练模型
         train_log_entry = {"step": "model_training", "model_name": self.model_name, "hpo_config": self.hpo_config}
         try:
-            # param_grid 就是从LLM获取的建议，直接传递给模型
             param_grid_for_tuning = self.hyperparam_suggestions
-
             if not param_grid_for_tuning:
                 print("警告: 未提供有效的超参数范围用于调优，将使用初始/默认参数训练。")
-                self.hpo_config = None  # 关闭调优
+                self.hpo_config = None
 
             self.model_instance.train(
                 X_train, y_train,
                 hpo_config=self.hpo_config,
                 param_grid=param_grid_for_tuning
             )
-
             self.trained_model_object = self.model_instance.model
             train_log_entry["status"] = "success"
             if self.model_instance.best_params_:
@@ -95,16 +121,23 @@ class ModelTrainer:
             traceback.print_exc()
             return
 
-        # 评估模型
-        eval_log_entry = {"step": "model_evaluation", "model_name": self.model_name}
+        # 评估模型 (测试集和训练集)
+        print("\n--- 正在评估模型性能 ---")
         try:
-            self.evaluation_results = self.model_instance.evaluate(X_test, y_test)
-            eval_log_entry["status"] = "success"
-            eval_log_entry["metrics"] = self.evaluation_results
-            self.training_log.append(eval_log_entry)
+            # 评估测试集
+            test_metrics, test_log = self._evaluate_and_visualize(X_test, y_test, "测试集")
+            self.evaluation_results["test"] = test_metrics
+            self.training_log.append(
+                {"step": "model_evaluation_test", "status": "success", "details": test_log, "metrics": test_metrics})
+
+            # 评估训练集
+            train_metrics, train_log = self._evaluate_and_visualize(X_train, y_train, "训练集")
+            self.evaluation_results["train"] = train_metrics
+            self.training_log.append(
+                {"step": "model_evaluation_train", "status": "success", "details": train_log, "metrics": train_metrics})
+
         except Exception as e:
-            eval_log_entry["status"] = "failed"
-            eval_log_entry["error"] = str(e)
+            eval_log_entry = {"step": "model_evaluation", "status": "failed", "error": str(e)}
             self.training_log.append(eval_log_entry)
             print(f"模型 {self.model_name} 评估失败: {e}")
             return

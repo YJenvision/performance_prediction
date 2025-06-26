@@ -1,0 +1,37 @@
+{
+  "抗拉强度": {
+    "name": "TS_N",
+    "type": "percentage",
+    "value": 5
+  },
+  "断裂延伸率": {
+    "name": "BREAK_EL_N",
+    "type": "value",
+    "value": 6
+  },
+  "屈服延伸率": {
+    "name": "YS_EL_N",
+    "type": "percentage",
+    "value": 7
+  },
+  "屈服强度": {
+    "name": "RP02_N",
+    "type": "percentage",
+    "value": 8
+  },
+  "上屈服强度": {
+    "name": "TOP_YS_N",
+    "type": "percentage",
+    "value": 9
+  },
+  "下屈服强度": {
+    "name": "BOT_YS_N",
+    "type": "percentage",
+    "value": 10
+  },
+  "均匀延伸率": {
+    "name": "AGT_EL_N",
+    "type": "value",
+    "value": 3
+  }
+}
