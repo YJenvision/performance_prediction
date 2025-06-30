@@ -19,9 +19,10 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         - user_request: str (用户的原始自然语言建模请求描述)
         - sg_sign: str (牌号)
         - target_metric: str (目标性能指标)
-        - time_range: str (数据时间范围, e.g., "2023-01-01_to_2025-12-31")
+        - time_range: str (数据时间范围, e.g., "20230101-20250101")
         - product_unit_no: str (机组/产线号)
         - st_no: str (出钢记号)
+        - steel_grade: str (钢种)
         - 后续逻辑待补充完善
     返回:
     - 一个包含模型信息与评估结果的字典。
@@ -34,6 +35,7 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
     time_range = request_params.get("time_range")
     product_unit_no = request_params.get("product_unit_no")
     st_no = request_params.get("st_no")
+    steel_grade = request_params.get("steel_grade")
 
     if not all([target_metric]):
         return {"status": "failed", "error": "请求参数不完整 (目标性能字段target_metric必须提供)。"}
@@ -47,9 +49,9 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         print("\n模块1: 数据获取...")
         data_loader = DataLoader(db_config=DB_CONFIG)
         # 数据库取数
-        raw_data = data_loader.fetch_data(sg_sign, target_metric, time_range, product_unit_no, st_no)
+        raw_data = data_loader.fetch_data(sg_sign, target_metric, time_range, product_unit_no, st_no, steel_grade)
         # 从excel中取数
-        # raw_data = data_loader.fetch_data_from_excel(sg_sign, target_metric, time_range, product_unit_no, st_no)
+        # raw_data = data_loader.fetch_data_from_excel(sg_sign, target_metric, time_range, product_unit_no, st_no, steel_grade)
         if raw_data is None or raw_data.empty:
             pipeline_recorder.add_stage("data_acquisition", "failed", {"error": "未能获取到数据或数据为空"})
             pipeline_recorder.set_final_status("failed")

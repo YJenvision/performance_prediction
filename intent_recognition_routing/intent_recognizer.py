@@ -126,6 +126,7 @@ unknown_intent"""
     * 如果用户完全没有提及任何时间信息，则默认使用最近一年的数据。
 5.  `product_unit_no`: 字符串数组，生产机组号。如果用户提及多个（如 "H033和H043"），请将它们提取为 `["H033", "H043"]`。如果只提及一个，则为 `["H033"]`。如果未提及，则其值为 null。
 6.  `st_no`: 字符串数组，出钢记号。处理方式同上。如果未提及，则其值为 null。
+7.  `steel_grade`: 字符串数组，钢种。处理方式同上。如果未提及，则其值为 null，可能的取值有 'LA'、'CM'、'DP'、'AV'等等。
 
 返回的JSON格式必须如下，所有字段都必须包含：
 {{
@@ -134,7 +135,8 @@ unknown_intent"""
   "target_metric": "提取到的目标性能指标或'未知指标'",
   "time_range": "计算出的时间范围YYYYMMDD-YYYYMMDD",
   "product_unit_no": ["提取到的机组号1", "提取到的机组号2"] or null,
-  "st_no": ["提取到的出钢记号1"] or null
+  "st_no": ["提取到的出钢记号1", "提取到的出钢记号2"] or null,
+  "steel_grade": ["提取到的钢种1", "提取到的钢种2"] or null
 }}
 
 请确保所有字段都存在于返回的JSON中，并且只返回JSON对象，不要包含任何额外的解释或文本。
@@ -148,7 +150,8 @@ unknown_intent"""
   "target_metric": "屈服强度",
   "time_range": "{(current_date - timedelta(days=365)).strftime("%Y%m%d")}-{current_date.strftime("%Y%m%d")}",
   "product_unit_no": ["H033", "H043"],
-  "st_no": null
+  "st_no": null,
+  "steel_grade": null
 }}
 
 用户请求: "我想建一个抗拉强度的模型"，当前日期是{current_date.strftime("%Y年%m月%d日")}。
@@ -159,7 +162,20 @@ unknown_intent"""
   "target_metric": "抗拉强度",
   "time_range": "{(current_date - timedelta(days=365)).strftime("%Y%m%d")}-{current_date.strftime("%Y%m%d")}",
   "product_unit_no": null,
-  "st_no": null
+  "st_no": null,
+  "steel_grade": null
+}}
+
+用户请求: "我想建一个LA和CM钢种的断裂延伸率的模型"，当前日期是{current_date.strftime("%Y年%m月%d日")}。
+你应该返回：
+{{
+  "user_request": "我想建一个抗拉强度的模型",
+  "sg_sign": null,
+  "target_metric": "抗拉强度",
+  "time_range": "{(current_date - timedelta(days=365)).strftime("%Y%m%d")}-{current_date.strftime("%Y%m%d")}",
+  "product_unit_no": null,
+  "st_no": null,
+  "steel_grade": ["LA", "CM"],
 }}
 """
         if intent == "model_building_evaluation_request":
@@ -189,7 +205,8 @@ unknown_intent"""
                 "target_metric": extracted_info.get("target_metric"),
                 "time_range": extracted_info.get("time_range"),
                 "product_unit_no": extracted_info.get("product_unit_no"),
-                "st_no": extracted_info.get("st_no")
+                "st_no": extracted_info.get("st_no"),
+                "steel_grade": extracted_info.get("steel_grade")
             }
 
             if pre_result["target_metric"] == "未知指标":

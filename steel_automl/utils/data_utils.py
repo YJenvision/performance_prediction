@@ -16,8 +16,6 @@ def generate_data_profile(df: pd.DataFrame) -> Dict[str, Any]:
             总行数和总列数
             每列的详细统计信息（数据类型、缺失值、唯一值等）
             数值列的统计量（均值、标准差、分位数等）
-            布尔列的统计量（True/False计数）
-            分类/对象列的频数统计
     {
     "num_rows": 总行数,
     "num_cols": 总列数,
@@ -28,22 +26,9 @@ def generate_data_profile(df: pd.DataFrame) -> Dict[str, Any]:
             "unique_values": 唯一值数量,
 
             # 数值列特有
-            "mean": 均值,
-            "std": 标准差,
-            "min": 最小值,
-            "25%": 25分位数,
-            "50%": 50分位数,
-            "75%": 75分位数,
-            "max": 最大值,
             "potential_outliers_iqr": 基于IQR的潜在离群值数量,
             "potential_outliers_percentage_iqr": 基于IQR的潜在离群值百分比,
 
-            # 布尔列特有
-            "true_count": True计数,
-            "false_count": False计数,
-
-            # 分类列特有
-            "top_values": 前5高频值
         },
         # 其他列...
     }
@@ -80,13 +65,6 @@ def generate_data_profile(df: pd.DataFrame) -> Dict[str, Any]:
 
         # 使用非空数据判断类型
         if not non_null_data.empty and pd.api.types.is_numeric_dtype(non_null_data):
-            # details["mean"] = float(round(non_null_data.mean(), 3))
-            # details["std"] = float(round(non_null_data.std(), 3))
-            # details["min"] = float(round(non_null_data.min(), 3))
-            # details["25%"] = float(round(non_null_data.quantile(0.25), 3))
-            # details["50%"] = float(round(non_null_data.quantile(0.50), 3))
-            # details["75%"] = float(round(non_null_data.quantile(0.75), 3))
-            # details["max"] = float(round(non_null_data.max(), 3))
             # 简单离群值检测 (基于IQR)
             Q1 = non_null_data.quantile(0.25)
             Q3 = non_null_data.quantile(0.75)
@@ -103,38 +81,6 @@ def generate_data_profile(df: pd.DataFrame) -> Dict[str, Any]:
             if potential_outliers_percentage_iqr > 0:
                 details["potential_outliers_percentage_iqr"] = potential_outliers_percentage_iqr
 
-        elif pd.api.types.is_bool_dtype(non_null_data):  # 布尔类型处理
-            details["true_percentage"] = float(round(non_null_data.mean() * 100, 2)) if not non_null_data.isnull().all() else None
-            details["false_percentage"] = float(
-                round((1 - non_null_data.mean()) * 100, 2)) if not non_null_data.isnull().all() else None
-
         profile["column_details"][col] = details
 
     return profile
-
-
-if __name__ == '__main__':
-
-    data = {
-        'A': [1, 2, np.nan, 4, 5, 1, 2, 30],  # 包含NaN和离群值
-        'B': ['x', 'y', 'x', 'z', 'y', 'x', 'x', 'y'],
-        'C': [1.1, 2.2, 3.3, None, ' ', 1.1, 2.2, 3.3],
-        'D': [True, False, True, True, None, ' ', False, True],
-        'E': [None, None, None, None, None, ' ', None, None],
-        'F': [None, None, None, None, None, None, None, None],  # 全是NaN
-        'G': [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],  # 全是NaN
-        'H': [np.nan, np.nan, np.nan, np.nan, np.nan, 00, np.nan, np.nan],
-    }
-    sample_df = pd.DataFrame(data)
-
-    # 预处理操作在分析数据画像前data_loader进行
-    # 预处理：将列名全部转换为大写
-    sample_df.columns = sample_df.columns.str.upper()
-    # 预处理：将空字符串' '、'(null)'替换为NaN
-    sample_df = sample_df.replace(r'^\s*$', np.nan, regex=True)
-    sample_df = sample_df.replace(r'(null)', np.nan, regex=True)
-
-    profile = generate_data_profile(sample_df)
-    import json
-
-    print(json.dumps(profile, indent=4))

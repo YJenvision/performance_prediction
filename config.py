@@ -19,6 +19,7 @@ PREPROCESSING_KB_NAME = "data_preprocessing_kb"
 FEATURE_ENGINEERING_KB_NAME = "feature_engineering_kb"
 MODEL_SELECTION_KB_NAME = "model_selection_kb"
 HISTORICAL_CASES_KB_NAME = "historical_cases_kb"
+PROFESSIONAL_KNOWLEDGE_KB_NAME = "professional_knowledge_kb"
 
 # 数据库连接信息
 DB_CONFIG = {
