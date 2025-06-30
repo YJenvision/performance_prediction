@@ -46,7 +46,7 @@ class DataPreprocessor:
 如果没有任何列需要删除，请返回 `{{ "columns_to_delete": [] }}`。
 
 **示例输出:**
-`{{ "columns_to_delete": ["ST_NO", "SM_TM", "TS_N"] }}`
+`{{ "columns_to_delete": ["ST_NO", "SIGN_CODE", "SIGN_LINE_NO"] }}`
 
 确保你的回复中不包含任何解释性文字、代码块标记或其他非JSON内容。
 """
@@ -79,7 +79,6 @@ class DataPreprocessor:
 
         # --- 步骤①: 删除常量列和全空列 ---
         print("  粗筛步骤①: 检查并删除常量列和全空列...")
-        # 统一处理各种形式的空值
         null_placeholders = [r'^\s*$', r'\(?null\)?', 'null', 'nan']
         for placeholder in null_placeholders:
             df_screened.replace(to_replace=placeholder, value=np.nan, regex=True, inplace=True)
@@ -88,16 +87,11 @@ class DataPreprocessor:
         cols_to_remove = []
 
         for col in df_screened.columns:
-            # 跳过目标列
             if col == self.target_metric:
                 continue
-
-            # 删除全为空的列
             if df_screened[col].isnull().all():
                 cols_to_remove.append(col)
                 continue
-
-            # 删除只有一个唯一值（非空）或全部值相同的列
             if df_screened[col].dropna().nunique() <= 1:
                 cols_to_remove.append(col)
 
@@ -115,12 +109,10 @@ class DataPreprocessor:
 
         # --- 步骤② & ③: 基于领域知识和用户需求的特征删除 ---
         print("  粗筛步骤②&③: 基于知识库和用户需求，使用智能体进行特征筛选...")
-
-        # 从业务数据库知识库检索信息
         perf_metrics_docs = self.domain_kb.search("数据预处理过程时的目标性能指标字段列表", k=1)
         unsuitable_features_docs = self.domain_kb.search("经验意义上不适用作训练字段的特征列", k=1)
-        perf_metrics_info = perf_metrics_docs[0].get("metadata", "")
-        unsuitable_features_info = unsuitable_features_docs[0].get("metadata", "")
+        perf_metrics_info = perf_metrics_docs[0].get("metadata", "") if perf_metrics_docs else "无"
+        unsuitable_features_info = unsuitable_features_docs[0].get("metadata", "") if unsuitable_features_docs else "无"
         current_columns = df_screened.columns.tolist()
         system_prompt, user_prompt = self._generate_prompt_for_screening(current_columns, perf_metrics_info,
                                                                          unsuitable_features_info)
@@ -132,7 +124,6 @@ class DataPreprocessor:
             decision = json.loads(llm_response_str)
             cols_to_delete_by_llm = decision.get("columns_to_delete", [])
 
-            # 确保目标列不会被意外删除
             if self.target_metric in cols_to_delete_by_llm:
                 print(f"    警告: LLM建议删除目标列 '{self.target_metric}'，此操作已被阻止。")
                 cols_to_delete_by_llm.remove(self.target_metric)
@@ -142,82 +133,83 @@ class DataPreprocessor:
             if valid_cols_to_delete:
                 df_screened.drop(columns=valid_cols_to_delete, inplace=True)
                 steps_log.append({
-                    "step": "特征粗筛-智能体决策删除",
-                    "status": "success",
+                    "step": "特征粗筛-智能体决策删除", "status": "success",
                     "details": "基于领域知识和用户需求，删除了其他性能指标和不适用特征。",
-                    "removed_columns": valid_cols_to_delete,
-                    "reasoning_source": "LLM with Domain Knowledge"
+                    "removed_columns": valid_cols_to_delete, "reasoning_source": "LLM with Domain Knowledge"
                 })
                 print(f"    LLM决策移除了 {len(valid_cols_to_delete)} 个特征: {valid_cols_to_delete}")
             else:
                 print("    LLM决策未建议删除任何特征。")
                 steps_log.append({
-                    "step": "特征粗筛-智能体决策删除",
-                    "status": "no_action",
+                    "step": "特征粗筛-智能体决策删除", "status": "no_action",
                     "details": "智能体分析后未发现需要基于知识库删除的列。"
                 })
-
         except (json.JSONDecodeError, AttributeError) as e:
             print(f"    错误: 解析智能体的粗筛决策失败: {e}。跳过此步骤。")
             steps_log.append({
-                "step": "特征粗筛-智能体决策删除",
-                "status": "failed",
-                "error": f"Failed to parse Agent response: {e}",
-                "raw_response": llm_response_str
+                "step": "特征粗筛-智能体决策删除", "status": "failed",
+                "error": f"Failed to parse Agent response: {e}", "raw_response": llm_response_str
             })
 
         return df_screened, steps_log
 
     def _generate_llm_prompt_for_preprocessing_plan(self, data_profile_str: str, columns_to_process: List[str]) -> \
-            Tuple[str, str]:
-        """数据预处理计划系统和用户提示词"""
+    Tuple[str, str]:
+        """详细数据预处理计划系统和用户提示词"""
         system_prompt = f"""
 你是一位顶级的钢铁行业数据科学家，专门负责制定数据预处理策略。
 你的任务是根据用户需求、数据画像和知识库经验，为每个待处理的特征列定义一个或多个预处理步骤。
 
-用户原始请求摘要: "{self.user_request}"
-目标性能指标: "{self.target_metric}" (此列通常不参与特征预处理)
+**任务上下文:**
+- 用户原始请求摘要: "{self.user_request}"
+- 目标性能指标: "{self.target_metric}" (此列通常不参与特征预处理，除非是删除目标性能指标的缺失行或异常值)
 
-可用的预处理操作:
-1.  缺失值处理 (存在缺失值的特征列均需进行缺失值处理):
-    - 'delete_column': 删除该列 (缺失比例过高时)。
-    - 'delete_rows_with_missing_in_column': 删除在该列有缺失值的行 (缺失比例非常低时)。
-    - 'impute_mean': 均值填充 (数值型)。
-    - 'impute_median': 中位数填充 (数值型)。
-    - 'impute_most_frequent': 众数填充 (数值型或类别型)。
-2.  类别特征编码 (所有非数值型特征(object类、bool类等)均采取删除策略):
-    - 'delete_column': 删除该列。
-3.  离群值处理 (数值型):
+**可用的预处理操作:**
+1.  **缺失值处理** (存在缺失值的特征列均需处理):
+    - 'delete_column': 删除该列 (缺失比例过高)。
+    - 'delete_rows_with_missing_in_column': 删除在该列有缺失值的行 (缺失比例非常低，且样本充足时)。
+    - 'impute_mean': 均值填充 (适用于接近正态分布的数值型特征)。
+    - 'impute_median': 中位数填充 (适用于有偏分布或有离群值的数值型特征)。
+    - 'impute_most_frequent': 众数填充。
+
+2.  **类别特征编码** (dtype 为 'object', 'bool' 等非数值型的特征):
+    - 'one_hot_encode_column': 独热编码。适用于低基数特征。
+    - 'label_encode_column': 标签编码。适用于有序类别或树模型中的中低基数特征。
+    - 'target_encode_column': 目标编码。适用于中高基数特征，能有效利用目标信息。
+    - 'delete_column': 删除该列。适用于基数过高、噪音大或与目标无关的类别特征。
+
+3.  **离群值处理** (数值型):
     - 'cap_outliers_iqr': 基于IQR进行封顶 (可选参数 'factor', 默认为1.5)。
-4.  其他操作:
+
+4.  **其他操作**:
     - 'no_action': 不执行任何操作。
 
-决策逻辑:
-- **多步骤处理**: 一个列可以应用多个操作，例如可以先填充缺失值，再进行离群值处理。
-- **操作顺序**: 在为单列制定计划时，如果设计多个操作，请务必遵循逻辑顺序：缺失值处理 -> 离群值处理。
-- **数据画像**: 仔细分析数据类型、缺失比例、唯一值和分布来选择最合适的操作组合。
-- **知识库**: 优先采纳知识库中的成功策略。
+**决策逻辑:**
+- **操作顺序**: 如果为单列制定多个操作，请务必遵循逻辑顺序：缺失值处理 -> 离群值处理。
+- **数据画像**: 仔细分析数据类型(dtype)、缺失比例(missing_percentage)、唯一值数量(unique_values)和离群值情况(potential_outliers_iqr)来选择最合适的操作。
+- **类别特征编码策略**:
+    - **极低基数 (unique_values <= 5)** 或 **布尔型 (dtype == 'bool')**: 优先使用 `label_encode_column`，因为它最高效。
+    - **低基数 (5 <= unique_values <= 15)**: 优先使用 `one_hot_encode_column`，这是最安全、最通用的方法，可以避免错误的顺序假设。
+    - **中等基数 (16 <= unique_values <= 50)**: 这是一个权衡区。`target_encode_column` 是一个强大的选择，可以直接捕捉特征与目标的关系。对于树模型算法，`label_encode_column` 也是一个可行的、更简单的备选方案。
+    - **高基数 (unique_values > 50)**: 强烈推荐 `target_encode_column`，以避免`one_hot_encode_column`导致的维度爆炸。如果特征的业务意义不明确或可能引入大量噪音，`delete_column` 也是一个合理的防御性策略。
 
-输出格式要求:
+**输出格式要求:**
 严格按照以下JSON格式返回你的计划。JSON对象中，每个键是列名，对应的值是一个**操作列表**。
 
-示例JSON输出:
+**示例JSON输出:**
 {{
-  "column_name1": [
+  "feature_A": [
     {{ "operation": "impute_median" }},
-    {{ "operation": "standard_scale_column" }}
+    {{ "operation": "cap_outliers_iqr", "params": {{ "factor": 2.0 }} }}
   ],
-  "column_name2": [
-    {{ 
-      "operation": "cap_outliers_iqr", 
-      "params": {{ "factor": 2.0 }}
-    }},
-    {{ "operation": "min_max_scale_column" }}
+  "feature_B_categorical": [
+    {{ "operation": "impute_most_frequent" }},
+    {{ "operation": "target_encode_column" }}
   ],
-  "column_name3": [
+  "feature_C_to_drop": [
     {{ "operation": "delete_column" }}
   ],
-  "column_name4": [
+  "feature_D_no_change": [
     {{ "operation": "no_action" }}
   ]
 }}
@@ -227,62 +219,91 @@ class DataPreprocessor:
         user_prompt = f"""
 请为以下经过粗筛后的数据制定详细的预处理计划。
 
-数据画像:
+**数据画像:**
+```json
 {data_profile_str}
+```
 
-请为以下列制定预处理计划: {', '.join(columns_to_process)}.
-目标列 '{self.target_metric}' 不参与预处理。
+请为以下列制定预处理计划: {json.dumps(columns_to_process)}。
+目标列 '{self.target_metric}' 不应包含在你的计划中。
 请严格按照系统提示中要求的JSON格式（每个特征列对应一个操作列表）输出。
 """
         return system_prompt, user_prompt
 
     def _execute_preprocessing_plan(self, df: pd.DataFrame, plan: Dict[str, List[Dict[str, Any]]]) -> pd.DataFrame:
-        """根据制定的计划，执行预处理步骤。(此部分保持不变)"""
+        """根据制定的计划，执行预处理步骤 (已重构)"""
         df_processed = df.copy()
-        # 优化点：定义一个固定的、逻辑正确的处理顺序
+        # 定义一个固定的、逻辑正确的处理顺序
         PROCESSING_ORDER = [
-            # 阶段1：删除
+            # 阶段1: 删除操作
             "delete_column",
-            # 阶段2：插补
-            "delete_rows_with_missing_in_column", "impute_mean", "impute_median", "impute_most_frequent",
-            # 阶段3：离群值处理
+            # 阶段2: 行级操作
+            "delete_rows_with_missing_in_column",
+            # 阶段3: 缺失值填充
+            "impute_mean", "impute_median", "impute_most_frequent",
+            # 阶段4: 类别特征编码
+            "one_hot_encode_column", "label_encode_column", "target_encode_column",
+            # 阶段5: 离群值处理
             "cap_outliers_iqr",
-            # 阶段4：缩放
-            "standard_scale_column", "min_max_scale_column",
-            # (编码可以放在这里，如果添加的话)
-            # "one_hot_encode_column",
-            # 阶段6：无操作
+            # 阶段6: 无操作
             "no_action"
         ]
+
         for operation_type in PROCESSING_ORDER:
-            for column, steps in plan.items():
-                if column not in df_processed.columns: continue
+            # 确保按计划中的列顺序处理，以增加确定性
+            sorted_columns = sorted(plan.keys())
+            for column in sorted_columns:
+                if column not in df_processed.columns:
+                    continue
+
+                steps = plan.get(column, [])
                 for step in steps:
                     if step.get("operation") == operation_type:
-                        # ... (原有执行细节不变)
                         operation = step.get("operation")
                         params = step.get("params", {})
                         print(f"  处理列'{column}'，操作为'{operation}'")
-                        if column == self.target_metric: continue
+
+                        if column == self.target_metric and operation not in ['delete_rows_with_missing_in_column']:
+                            continue
+
                         step_details = {"column": column, "operation": operation, "params": params, "status": "failed"}
                         try:
                             if operation == "no_action":
                                 step_details["status"] = "no_action"
                             elif operation in PREPROCESSING_METHODS_MAP:
                                 method_to_call = PREPROCESSING_METHODS_MAP[operation]
-                                df_processed = method_to_call(df_processed, column, **params)
+
+                                # 为需要目标变量的编码器动态添加参数
+                                if operation == 'target_encode_column':
+                                    params['target_metric_name'] = self.target_metric
+
+                                # 执行方法
+                                result = method_to_call(df_processed, column, **params)
+
+                                # 解包返回结果并保存拟合对象
+                                fitted_obj = None
+                                if isinstance(result, tuple) and len(result) == 2:
+                                    df_processed, fitted_obj = result
+                                    if fitted_obj:
+                                        # 保存拟合好的对象，以便后续应用
+                                        object_key = f"{column}_{operation}"
+                                        self.fitted_objects[object_key] = fitted_obj
+                                        print(f"    -> 已拟合的对象 '{object_key}' 已保存。")
+                                else:
+                                    df_processed = result  # 兼容只返回DataFrame的老方法
+
                                 step_details["status"] = "success"
                             else:
                                 step_details["error"] = f"Unknown operation: {operation}"
                         except Exception as e:
                             step_details["error"] = str(e)
+                            print(f"    -> 错误: 处理列'{column}'，操作'{operation}'失败: {e}")
+
                         self.applied_steps.append(step_details)
         return df_processed
 
     def preprocess_data(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List[Dict[str, Any]], Dict[str, Any]]:
-        """
-        数据预处理主流程，包含特征粗筛和详细处理两个阶段。
-        """
+        """数据预处理主流程，包含特征粗筛和详细处理两个阶段。"""
         print("\n--- 开始数据预处理 ---")
         self.applied_steps = []
         self.fitted_objects = {}
@@ -312,7 +333,7 @@ class DataPreprocessor:
             return df_screened, self.applied_steps, self.fitted_objects
 
         print("步骤1: 为剩余特征生成数据画像...")
-        data_profile = generate_data_profile(df_screened[columns_to_process])
+        data_profile = generate_data_profile(df_screened)  # 画像应包含所有列
         data_profile_str = json.dumps(data_profile, indent=2, ensure_ascii=False)
         self.applied_steps.append({"step": "生成数据画像", "status": "success"})
         print(f"数据画像：\n{data_profile_str}")
@@ -336,7 +357,8 @@ class DataPreprocessor:
                 print(f"解析详细计划失败: {e}")
                 if i == max_retries - 1:
                     self.applied_steps.append(
-                        {"step": "生成详细预处理计划", "status": "failed", "error": f"解析失败: {e}"})
+                        {"step": "生成详细预处理计划", "status": "failed", "error": f"智能体响应解析失败: {e}",
+                         "raw_response": llm_response_str})
                     return df_screened, self.applied_steps, self.fitted_objects
 
         if not llm_plan:
@@ -347,6 +369,14 @@ class DataPreprocessor:
 
         print("步骤3: 执行详细预处理计划...")
         df_processed = self._execute_preprocessing_plan(df_screened, llm_plan)
+
+        # 最后，删除那些只包含NaN或在处理后变成常量的列
+        final_cols_to_drop = [col for col in df_processed.columns if
+                              df_processed[col].dropna().nunique() <= 1 and col != self.target_metric]
+        if final_cols_to_drop:
+            df_processed = df_processed.drop(columns=final_cols_to_drop)
+            print(f"最终清理：删除了处理后变成常量的列: {final_cols_to_drop}")
+            self.applied_steps.append({"step": "最终清理经过处理后变成常量的列", "status": "success", "removed_columns": final_cols_to_drop})
 
         print("--- 数据预处理完成 ---")
         return df_processed, self.applied_steps, self.fitted_objects

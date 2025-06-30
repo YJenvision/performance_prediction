@@ -71,8 +71,7 @@ def generate_sql_query(
             user_prompt += f"\n{condition_num}. 钢种条件：钢种代码为'{steel_grade[0]}'，需要通过SUBSTR(SIGN_CODE, 5, 2) = '{steel_grade[0]}'进行匹配"
         else:
             user_prompt += f"\n{condition_num}. 钢种条件：钢种代码为'{', '.join(steel_grade)}'，需要通过SUBSTR(SIGN_CODE, 5, 2) IN {format_in_clause(steel_grade)}进行匹配"
-    print(system_prompt)
-    print(user_prompt)
+
     sql_query = call_llm(system_prompt, user_prompt, model="ds_v3")
 
     # 删除SELECT之前的所有内容（使用R1可能会响应其他内容，比如在语句之前添加 'sql'）

@@ -481,6 +481,10 @@ if __name__ == "__main__":
                         "standard_name": "实绩上传时间"
                     },
                     {
+                        "field_code": "REC_CREATE_TIME",
+                        "standard_name": "实绩创建时间"
+                    },
+                    {
                         "field_code": "MAT_TRACK_NO",
                         "standard_name": "材料跟踪号"
                     },
@@ -1903,6 +1907,10 @@ if __name__ == "__main__":
                     {
                         "field_code": "ROUGH_RSM_MIN",
                         "standard_name": "粗糙度RSM下限"
+                    },
+                    {
+                        "field_code": "YS_TYPE_CODE",
+                        "standard_name": "屈服强度类型"
                     },
                     {
                         "field_code": "ROUGH_RSM_MAX",

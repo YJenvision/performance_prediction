@@ -71,7 +71,7 @@ class ModelSelector:
 
     def _determine_acceptable_error(self) -> Tuple[Dict[str, Any], str]:
         """
-        使用LLM根据用户请求和配置文件确定可接受的误差范围。
+        使用智能体根据用户请求和配置文件确定可接受的误差范围。
         """
         print("\n--- 正在确定可接受的误差范围 ---")
         system_prompt = f"""
@@ -111,13 +111,13 @@ class ModelSelector:
 请严格按照系统提示中要求的JSON格式输出你的决策。
 """
         try:
-            llm_response_str = call_llm(system_prompt, user_prompt)
+            llm_response_str = call_llm(system_prompt, user_prompt, model="ds_v3")
             parsed_response = json.loads(llm_response_str)
             if "type" in parsed_response and "value" in parsed_response and "source" in parsed_response:
                 print(f"成功确定误差范围: {parsed_response}")
                 return parsed_response, f"成功确定误差范围: {parsed_response}"
             else:
-                raise ValueError("LLM响应缺少必要的键。")
+                raise ValueError("智能体响应缺少必要的键。")
         except (Exception) as e:
             error_msg = f"确定误差范围失败: {e}。将使用配置文件中的默认值。"
             print(f"警告: {error_msg}")
