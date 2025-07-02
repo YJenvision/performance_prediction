@@ -1936,15 +1936,49 @@ if __name__ == "__main__":
     # 2. 特征工程知识库
     feature_engineering_samples = [
         {
-            "text_for_embedding": "碳当量(CEQ)，是评估钢材焊接性的重要指标，通常由C, Mn, Cr, Mo, V, Ni, Cu等元素计算得到。",
-            "metadata": {"feature_name": "CEQ", "formula": "C + Mn/6 + (Cr+Mo+V)/5 + (Ni+Cu)/15",
-                         "elements": ["C", "Mn", "Cr", "Mo", "V", "Ni", "Cu"]}
+            "text_for_embedding": "碳当量(CE)是一种用于评估钢材焊接性的指标，通常由C, Mn, Cr, Mo, V, Ni, Cu等元素计算得到。它将多种合金元素对钢材淬硬性的影响折算成碳当量的形式。",
+            "metadata": {
+                "feature_name": "Carbon Equivalent (CE)",
+                "formula_template": "{C} + {Mn}/6 + ({Cr}+{Mo}+{V})/5 + ({Ni}+{Cu})/15",
+                "elements": ["C", "Mn", "Cr", "Mo", "V", "Ni", "Cu"],
+                "mapping_hints": {
+                    "C": ["C", "ELM_C"],
+                    "Mn": ["Mn", "ELM_MN"],
+                    "Cr": ["Cr", "ELM_CR"],
+                    "Mo": ["Mo", "ELM_MO"],
+                    "V": ["V", "ELM_V"],
+                    "Ni": ["Ni", "ELM_NI"],
+                    "Cu": ["Cu", "ELM_CU"]
+                },
+                "new_feature_name": "CE"
+            }
         },
         {
-            "text_for_embedding": "“过剩钛”(EX.TI)，这部分钛在钢中以固溶态或其他化合物形式存在，影响钢材性能。",
-            "metadata": {"feature_name": "EX.TI", "formula": "Ti - 3.4 * N",
-                         "elements": ["Ti", "N"]}
+            "text_for_embedding": "过剩钛(EX.TI)指钢中未与氮结合形成TiN的钛。这部分钛在钢中以固溶态或其他化合物形式存在，影响钢材性能。计算时需注意原子量比。",
+            "metadata": {
+                "feature_name": "Excess Titanium (EX.TI)",
+                "formula_template": "{Ti} - 3.4 * {N}",
+                "elements": ["Ti", "N"],
+                "mapping_hints": {
+                    "Ti": ["Ti", "ELM_TI"],
+                    "N": ["N", "ELM_N"]
+                },
+                "new_feature_name": "EX_TI"
+            }
         },
+        {
+            "text_for_embedding": "铝氮比(Al/N)是控制钢中氮化物析出的重要参数，影响晶粒尺寸和性能。",
+            "metadata": {
+                "feature_name": "Aluminum-Nitrogen Ratio",
+                "formula_template": "{Al} / {N}",
+                "elements": ["Al", "N"],
+                "mapping_hints": {
+                    "Al": ["Al", "ELM_AL"],
+                    "N": ["N", "ELM_N"]
+                },
+                "new_feature_name": "AL_N_RATIO"
+            }
+        }
     ]
     _initialize_sample_kb("feature_engineering_kb", feature_engineering_samples)
     #
@@ -1965,8 +1999,6 @@ if __name__ == "__main__":
     _initialize_sample_kb("model_selection_kb", model_selection_samples)
 
     # # --- 测试知识库搜索 ---
-    # print("\n--- 测试知识库搜索 ---")
-    #
     # # 测试数据预处理知识库
     # dp_kb = KnowledgeBaseService("data_preprocessing_kb")
     # search_query_dp = "我要构建一个针对小样本Q235B钢种数据的抗拉强度性能预报模型，在建模过程中添加碳当量特征。"

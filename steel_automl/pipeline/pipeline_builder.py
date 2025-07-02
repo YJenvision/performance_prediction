@@ -52,6 +52,7 @@ class PipelineBuilder:
             self.end_time = datetime.datetime.now()  # 如果未明确设置，则以当前时间为准
 
         summary = {
+            # pipeline的命名标准、模型的命名标准、数据集保存的命名标准。
             "pipeline_id": f"automl_{self.start_time.strftime('%Y%m%d%H%M%S')}_{self.user_request_details.get('sg_sign', 'unknown_sg')}",
             "user_request": self.user_request_details,
             "start_time": self.start_time.isoformat(),
@@ -61,28 +62,3 @@ class PipelineBuilder:
             "stages": self.pipeline_stages
         }
         return summary
-
-    def save_pipeline_summary(self, filepath: Optional[str] = None) -> str:
-        """
-        将Pipeline摘要保存到JSON文件。
-
-        参数:
-        - filepath: 保存文件的路径。如果为None，则生成默认文件名。
-
-        返回:
-        - 实际保存的文件路径。
-        """
-        summary = self.get_pipeline_summary()
-        if filepath is None:
-            # 确保results目录存在 (假设此文件在 pipeline/ 目录下)
-            results_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "results_output")
-            os.makedirs(results_dir, exist_ok=True)
-            filepath = os.path.join(results_dir, f"pipeline_summary_{summary['pipeline_id']}.json")
-
-        try:
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(summary, f, indent=4, ensure_ascii=False, default=str)  # default=str for datetime etc.
-            print(f"Pipeline摘要已保存到: {filepath}")
-        except Exception as e:
-            print(f"保存Pipeline摘要失败: {e}")
-        return filepath

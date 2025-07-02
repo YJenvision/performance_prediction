@@ -1,5 +1,13 @@
+# @Time    : 2025/5/16
+# @Author  : ZhangJingLiang
+# @Email   : jinglianglink@qq.com
+# @Project : performance_prediction_agent
+
 import time
 from typing import Dict, Any
+
+import numpy as np
+
 from config import DB_CONFIG
 from steel_automl.data_acquisition.data_loader import DataLoader
 from steel_automl.data_preprocessing.preprocessor import DataPreprocessor
@@ -12,7 +20,7 @@ from steel_automl.results.result_handler import ResultHandler
 
 def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
     """
-    钢铁产品性能预报回归模型AutoML主流程。
+    性能预报模型AutoML主流程。
 
     参数:
     - request_params: 包含用户请求的字典，应包括:
@@ -48,10 +56,8 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         # 1. 数据获取
         print("\n模块1: 数据获取...")
         data_loader = DataLoader(db_config=DB_CONFIG)
-        # 数据库取数
+        # 取数
         raw_data = data_loader.fetch_data(sg_sign, target_metric, time_range, product_unit_no, st_no, steel_grade)
-        # 从excel中取数
-        # raw_data = data_loader.fetch_data_from_excel(sg_sign, target_metric, time_range, product_unit_no, st_no, steel_grade)
         if raw_data is None or raw_data.empty:
             pipeline_recorder.add_stage("data_acquisition", "failed", {"error": "未能获取到数据或数据为空"})
             pipeline_recorder.set_final_status("failed")
@@ -60,10 +66,31 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         pipeline_recorder.add_stage("data_acquisition", "success",
                                     {"rows_fetched": len(raw_data), "columns": list(raw_data.columns)})
 
-        # 确保目标列存在
+        # 验证1: 目标列是否存在
         if target_metric not in raw_data.columns:
             pipeline_recorder.add_stage("data_validation", "failed",
-                                        {"error": f"目标列 '{target_metric}' 在获取的数据中不存在。"})
+                                        {"error": f"目标列 '{target_metric}' 在获取的数据中不存在，无法进行训练。"})
+            pipeline_recorder.set_final_status("failed")
+            final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
+            return final_result_package
+
+        # 验证2: 目标列全为空值
+        raw_data[target_metric] = raw_data[target_metric].replace(
+            [r'^\s*$', r'\(?null\)?', 'null', 'nan'],
+            np.nan,
+            regex=True
+        )
+        if raw_data[target_metric].isnull().all():
+            pipeline_recorder.add_stage("data_validation", "failed",
+                                        {"error": f"目标列 '{target_metric}' 全部为空值，无法进行训练。"})
+            pipeline_recorder.set_final_status("failed")
+            final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
+            return final_result_package
+
+        # 验证3: 目标列为常量列
+        if raw_data[target_metric].nunique() == 1:
+            pipeline_recorder.add_stage("data_validation", "failed",
+                                        {"error": f"目标列 '{target_metric}' 是常量列（所有值相同），无法进行训练。"})
             pipeline_recorder.set_final_status("failed")
             final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
             return final_result_package
@@ -82,17 +109,17 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         # 检查preprocessing_steps中的错误状态
         num_failed_preprocessing_steps = sum(1 for step in preprocessing_steps if
                                              isinstance(step, dict) and step.get("status") == "failed" and step.get(
-                                                 "step") != "llm_generate_preprocessing_plan")  # 不算LLM本身的失败
+                                                 "step") != "llm_generate_preprocessing_plan")  # 不算智能体本身的失败
         if num_failed_preprocessing_steps > 0 and not any(
                 step.get("operation") == "no_action" for step in preprocessing_steps if
                 isinstance(step, dict) and step.get("plan")):  # 有实际操作失败
-            # LLM计划本身失败，也算严重错误
+            # 智能体计划本身失败，也算严重错误
             llm_plan_failed = any(
                 step.get("step") == "llm_generate_preprocessing_plan" and step.get("status") == "failed" for step in
                 preprocessing_steps)
             if llm_plan_failed:
                 critical_preprocessing_failed = True
-                print("错误: LLM未能成功生成预处理计划。")
+                print("错误: 智能体未能成功生成预处理计划。")
 
         pipeline_recorder.add_stage("data_preprocessing",
                                     "failed" if critical_preprocessing_failed else "success",
@@ -119,7 +146,7 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
             step.get("step") == "llm_generate_fe_plan" and step.get("status") == "failed" for step in fe_steps)
         if llm_fe_plan_failed:
             critical_fe_failed = True
-            print("错误: LLM未能成功生成特征工程计划。")
+            print("错误: 智能体未能成功生成特征工程计划。")
 
         pipeline_recorder.add_stage("feature_engineering",
                                     "failed" if critical_fe_failed else "success",
@@ -172,7 +199,7 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         plan_details = automl_plan["model_plan"]
         model_recommendations = automl_plan["model_recommendations"]
 
-        # 简单策略：选择推荐列表中的第一个模型进行训练
+        # 目前单策略：选择推荐列表中的第一个模型进行训练
         chosen_model_name = list(model_recommendations.keys())[0]
         chosen_model_info = model_recommendations[chosen_model_name]
         data_split_ratio = plan_details.get("data_split_ratio", 0.2)
@@ -188,7 +215,7 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
             selected_model_name=chosen_model_name,
             model_info=chosen_model_info,
             hpo_config=hpo_config,
-            automl_plan=automl_plan  # **[MODIFIED]** 传递完整的automl_plan
+            automl_plan=automl_plan  # 传递完整的automl_plan
         )
         # 将动态的划分比例传入
         trainer.train_and_evaluate(X.copy(), y.copy(), test_size=data_split_ratio)
@@ -201,8 +228,7 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         if not trainer.evaluation_results:
             # 错误处理
             pipeline_recorder.set_final_status("failed")
-            # 可以在这里保存pipeline摘要
-            pipeline_recorder.save_pipeline_summary()
+            # 未保存过程性记录
             return {"status": "failed", "error": "模型训练或评估失败。"}
 
         # 7. 结果汇总
@@ -221,20 +247,8 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
 
         final_result_package = result_handler.compile_final_result()
 
-        # 保存Pipeline摘要和最终结果
-        pipeline_recorder.save_pipeline_summary()
+        # 保存最终结果
         result_handler.save_final_result()
-
-        total_duration = time.time() - start_time_total
-        print(f"\n--- 整个AutoML流程完成 ---")
-        print(f"总耗时: {total_duration:.2f} 秒")
-        print(f"最终状态: {final_result_package.get('status')}")
-        if final_result_package.get('status') == 'success':
-            test_metrics = final_result_package.get('evaluation_metrics', {}).get('test', {})
-            print(f"最终模型: {final_result_package.get('selected_model', {}).get('model_name')}")
-            print(f"测试集 R2 分数: {test_metrics.get('r2')}")
-            print(f"测试集 符合率: {test_metrics.get('proportion_in_acceptable_range')}")
-            print(f"测试集 结果图: {test_metrics.get('prediction_plot_path')}")
 
         return final_result_package
 
@@ -248,10 +262,8 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
                                      "traceback": traceback.format_exc()})
         pipeline_recorder.set_final_status("failed")
 
-        # 尝试保存已有的pipeline信息
-        pipeline_recorder.save_pipeline_summary()
-
         # 返回错误信息
+        # 未保存过程性记录
         final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
         if "status" not in final_result_package or final_result_package["status"] != "failed":
             final_result_package["status"] = "failed"

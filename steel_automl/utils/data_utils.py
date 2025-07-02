@@ -1,86 +1,118 @@
 import pandas as pd
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, List
+
+# 定义一个阈值，用于判断是否为低基数类别特征。
+# 如果特征的唯一值数量低于或等于此阈值，画像中将列出具体的唯一值。
+LOW_CARDINALITY_THRESHOLD = 10
 
 
-def generate_data_profile(df: pd.DataFrame) -> Dict[str, Any]:
+def generate_data_profile(df: pd.DataFrame, target_metric: str = None) -> Dict[str, Any]:
     """
-    生成DataFrame的数据画像。数据探索阶段，了解数据集的基本情况和质量帮助辅助。
+    为DataFrame生成一个为大语言模型（LLM）消耗而优化的、精简高效的数据画像。
+
+    这个最终版本的画像有以下核心改进：
+    1.  **语义化类型（Semantic Types）**: 将Pandas的物理类型抽象为逻辑类型（'numeric', 'categorical', 'binary', 'datetime', 'empty'），为智能体提供更直接的决策依据。
+    2.  **决策导向的统计信息**:
+        - 对数值型特征，提供关键的统计摘要（均值、中位数、标准差等），帮助智能体选择最合适的缺失值填充策略。
+        - 对类别型特征，提供基数（cardinality），并对低基数特征直接展示其唯一值。
+    3.  **极致精简**: 画像中不包含无用信息，有效缩短输入给智能体的上下文长度。
+    4.  **逻辑清晰**: 采纳用户建议，数值型（int, float）将始终被视为 'numeric'，不再根据基数转换为 'categorical'，使类型判断更加一致和稳健。
 
     参数:
     - df: 输入的Pandas DataFrame。
+    - target_metric: 目标列的名称，该列将被排除在画像之外。
 
     返回:
-    - 一个包含数据画像信息的字典。
-        包括：
-            总行数和总列数
-            每列的详细统计信息（数据类型、缺失值、唯一值等）
-            数值列的统计量（均值、标准差、分位数等）
-    {
-    "num_rows": 总行数,
-    "num_cols": 总列数,
-    "column_details": {
-        "列名1": {
-            "dtype": 数据类型,
-            "missing_percentage": 缺失值百分比,
-            "unique_values": 唯一值数量,
-
-            # 数值列特有
-            "potential_outliers_iqr": 基于IQR的潜在离群值数量,
-            "potential_outliers_percentage_iqr": 基于IQR的潜在离群值百分比,
-
-        },
-        # 其他列...
-    }
-}
+    - 一个包含优化后数据画像信息的字典。
     """
-
     profile = {
-        "num_rows": len(df),
-        "num_cols": len(df.columns),
-        "column_details": {}
+        "summary": {
+            "num_rows": len(df),
+            "num_cols": len(df.columns),
+        },
+        "column_profiles": {}
     }
 
-    for col in df.columns:
-        col_data = df[col]
+    for col_name in df.columns:
+        # 目标列不参与特征画像的生成
+        if col_name == target_metric:
+            continue
 
-        # 获取特征列中的非空数据用于类型判断
-        non_null_data = col_data.dropna()
+        series = df[col_name]
+        non_null_data = series.dropna()
+        col_profile = {}
 
-        details = {
-            "dtype": str(non_null_data.dtype) if not non_null_data.empty else "allNull",
-        }
+        # 1. 处理全空列
+        if non_null_data.empty:
+            col_profile['type'] = 'empty'
+            profile["column_profiles"][col_name] = col_profile
+            continue
 
-        # 缺失值计算方法：使用isna()而不是isnull()
-        missing_percentage = float(round(col_data.isna().mean() * 100, 2))
+        # 2. 计算通用信息
+        missing_percentage = series.isnull().mean() * 100
+        if missing_percentage > 0:
+            col_profile['missing_percentage'] = round(missing_percentage, 2)
 
-        # 仅当缺失值百分比不为 0 时添加该字段
-        if missing_percentage:
-            details["missing_percentage"] = missing_percentage
+        nunique = non_null_data.nunique()
 
-        # 仅当唯一值数量不为 0 时添加 unique_values 字段
-        unique_values = int(non_null_data.nunique()) if not non_null_data.empty else 0
-        if unique_values:
-            details["unique_values"] = unique_values
+        # 3. 根据数据类型进行针对性画像
+        # 检查是否为数值型 (并排除布尔型)
+        if pd.api.types.is_numeric_dtype(non_null_data) and not pd.api.types.is_bool_dtype(non_null_data):
+            # 所有整型和浮点型都视为 'numeric'
+            col_profile['type'] = 'numeric'
+            stats = non_null_data.describe()
+            col_profile['stats'] = {
+                'mean': round(stats.get('mean', 0), 3),
+                'std': round(stats.get('std', 0), 3),
+                'min': round(stats.get('min', 0), 3),
+                'median': round(non_null_data.median(), 3),
+                'max': round(stats.get('max', 0), 3),
+            }
 
-        # 使用非空数据判断类型
-        if not non_null_data.empty and pd.api.types.is_numeric_dtype(non_null_data):
-            # 简单离群值检测 (基于IQR)
-            Q1 = non_null_data.quantile(0.25)
-            Q3 = non_null_data.quantile(0.75)
-            IQR = Q3 - Q1
-            lower_bound = Q1 - 1.5 * IQR
-            upper_bound = Q3 + 1.5 * IQR
-            outliers = col_data[(col_data < lower_bound) | (col_data > upper_bound)]
-            potential_outliers_iqr = int(len(outliers))
-            potential_outliers_percentage_iqr = float(
-                round(len(outliers) / len(col_data.dropna()) * 100 if len(col_data.dropna()) > 0 else 0, 2)
-            )
-            if potential_outliers_iqr > 0:
-                details["potential_outliers_iqr"] = potential_outliers_iqr
-            if potential_outliers_percentage_iqr > 0:
-                details["potential_outliers_percentage_iqr"] = potential_outliers_percentage_iqr
+            # 离群值检测 (基于IQR)
+            q1 = non_null_data.quantile(0.25)
+            q3 = non_null_data.quantile(0.75)
+            iqr = q3 - q1
+            # 仅在IQR大于0时计算，避免除零错误或无效边界
+            if iqr > 0:
+                lower_bound = q1 - 1.5 * iqr
+                upper_bound = q3 + 1.5 * iqr
+                outliers = non_null_data[(non_null_data < lower_bound) | (non_null_data > upper_bound)]
+                # 仅在存在离群值时报告
+                if not outliers.empty:
+                    outlier_percentage = len(outliers) / len(non_null_data) * 100
+                    col_profile['outlier_percentage'] = round(outlier_percentage, 2)
 
-        profile["column_details"][col] = details
+        # 检查是否为布尔型或二元特征
+        elif pd.api.types.is_bool_dtype(non_null_data) or nunique == 2:
+            col_profile['type'] = 'binary'
+            col_profile['cardinality'] = 2
+            col_profile['unique_values'] = [str(v) for v in non_null_data.unique()]
+
+        # 检查是否为日期时间型
+        elif pd.api.types.is_datetime64_any_dtype(non_null_data):
+            col_profile['type'] = 'datetime'
+            col_profile['cardinality'] = nunique
+            try:
+                col_profile['stats'] = {
+                    'min': non_null_data.min().isoformat(),
+                    'max': non_null_data.max().isoformat()
+                }
+            except TypeError:  # 兼容带时区的时间
+                col_profile['stats'] = {
+                    'min': str(non_null_data.min()),
+                    'max': str(non_null_data.max())
+                }
+
+        # 其他所有情况都视为类别型
+        else:
+            col_profile['type'] = 'categorical'
+            col_profile['cardinality'] = nunique
+            # 仅在低基数时展示唯一值，以节省空间
+            if nunique <= LOW_CARDINALITY_THRESHOLD:
+                col_profile['unique_values'] = [str(v) for v in non_null_data.unique()]
+
+        profile["column_profiles"][col_name] = col_profile
 
     return profile

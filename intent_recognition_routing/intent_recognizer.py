@@ -1,3 +1,8 @@
+# @Time    : 2025/6/19 10:01
+# @Author  : ZhangJingLiang
+# @Email   : jinglianglink@qq.com
+# @Project : performance_prediction_agent
+
 import json
 from datetime import datetime, timedelta
 from llm_utils import call_llm
@@ -53,6 +58,29 @@ class SteelPerformanceIntentRecognizer:
 
         返回:
         - 一个包含意图和相关信息的字典。
+        建模与评估意图下的返回信息：
+        {
+            "user_request": user_request,
+            "intent": intent,
+            "sg_sign": ,
+            "target_metric": ,
+            "time_range": ,
+            "product_unit_no": ,
+            "st_no": ,
+            "steel_grade":
+        }
+        其他意图返回信息：
+        {
+            "user_request": user_request,
+            "intent": intent
+        }
+        - 失败：
+        {
+            "user_request": user_request,
+            "intent": intent,
+            "status": "",
+            "error_details": e
+        }
         """
         # 步骤1: 意图分类
         INTENT_CLASSIFICATION_SYSTEM_PROMPT = """
@@ -305,4 +333,5 @@ unknown_intent"""
                 "user_request": user_request,
                 "intent": "undefined_intent_category",
                 "received_intent_tag": intent,
+                "error_details": "未定义的意图分类标签。"
             }

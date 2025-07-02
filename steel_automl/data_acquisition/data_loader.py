@@ -22,7 +22,7 @@ def generate_sql_query(
     - end_time: 结束时间。
     - product_unit_no: 机组号列表。
     - st_no: 出钢记号列表。
-    - c: 钢种列表。
+    - steel_grade: 钢种列表。
 
     返回:
     - 生成的SQL查询语句。
@@ -89,6 +89,36 @@ def generate_sql_query(
 
     print(f"动态生成的SQL查询: {sql_query}")
     return sql_query
+
+
+def fetch_data_from_excel(sg_sign, target_metric, time_range, product_unit_no, st_no, steel_grade) -> \
+        Optional[pd.DataFrame]:
+    """
+    从Excel文件获取数据，支持钢种条件过滤。
+
+    参数:
+    - sg_sign: 牌号列表。
+    - target_metric: 目标性能指标列名。
+    - time_range: 数据时间范围。
+    - product_unit_no: 机组号列表。
+    - st_no: 出钢记号列表。
+    - steel_grade: 钢种列表（对应SIGN_CODE字段的第5-6位字符）。
+
+    返回:
+    - 过滤后的Pandas DataFrame或None。
+    """
+    print("开始从Excel文件获取数据。")
+    try:
+        df = pd.read_excel(r"D:\Desktop\性能预报智能体测试_Q235B_20250101-20250501.xlsx")
+        print(f"成功从Excel文件获取 {len(df)} 条数据。")
+
+        # 列名大写
+        df.columns = df.columns.str.upper()
+        return df
+
+    except Exception as e:
+        print(f"从Excel文件获取数据失败: {e}")
+        return None
 
 
 class DataLoader:
@@ -164,7 +194,8 @@ class DataLoader:
         - steel_grade: 钢种列表（对应SIGN_CODE字段的第5-6位字符）。
 
         返回:
-        - 包含特征和目标指标的Pandas DataFrame或None。
+        - 成功：Pandas DataFrame
+        - 失败：None。
         """
         if not self._connect():
             print("无法连接到数据库，数据获取失败。")
@@ -207,7 +238,6 @@ class DataLoader:
             # 如果指定了钢种条件，添加钢种列用于验证和分析
             if steel_grade and 'SIGN_CODE' in df.columns:
                 df['STEEL_GRADE'] = df['SIGN_CODE'].str[4:6]
-                print(f"已提取钢种信息到STEEL_GRADE列，共{df['STEEL_GRADE'].nunique()}种不同钢种")
 
             return df
         except Exception as e:
@@ -215,32 +245,3 @@ class DataLoader:
             return None
         finally:
             self._disconnect()
-
-    def fetch_data_from_excel(self, sg_sign, target_metric, time_range, product_unit_no, st_no, steel_grade) -> \
-            Optional[pd.DataFrame]:
-        """
-        从Excel文件获取数据，支持钢种条件过滤。
-
-        参数:
-        - sg_sign: 牌号列表。
-        - target_metric: 目标性能指标列名。
-        - time_range: 数据时间范围。
-        - product_unit_no: 机组号列表。
-        - st_no: 出钢记号列表。
-        - steel_grade: 钢种列表（对应SIGN_CODE字段的第5-6位字符）。
-
-        返回:
-        - 过滤后的Pandas DataFrame或None。
-        """
-        print("开始从Excel文件获取数据。")
-        try:
-            df = pd.read_excel(r"D:\Desktop\性能预报智能体测试_Q235B_20250101-20250501.xlsx")
-            print(f"成功从Excel文件获取 {len(df)} 条数据。")
-
-            # 列名大写
-            df.columns = df.columns.str.upper()
-            return df
-
-        except Exception as e:
-            print(f"从Excel文件获取数据失败: {e}")
-            return None

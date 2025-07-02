@@ -23,11 +23,11 @@ PROFESSIONAL_KNOWLEDGE_KB_NAME = "professional_knowledge_kb"
 
 # 数据库连接信息
 DB_CONFIG = {
-    "host": "127.0.0.1",  # 本地开发环境
+    "host": "127.0.0.1",
     # "host": "10.70.48.41",  # 服务器部署环境
     "user": "bgmszz00",
     "password": "bgmszz00bgta",
-    "port": "7002",  # 本地开发环境端口
+    "port": "7002",
     # "port": "50021",  # 服务器部署环境端口
     "database": "bgbdprod"
 }
