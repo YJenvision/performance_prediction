@@ -91,7 +91,7 @@ class FeatureGenerator:
 4.  `no_action`: 如果你认为现有特征已经足够，不需要任何新的特征工程。
 
 **输出格式要求:**
-你必须严格按照JSON格式返回一个操作列表。每个操作是一个包含 'operation' 和 'params' 的字典。不要在JSON前后添加任何解释性文字或代码块标记。
+你只能严格返回一个按照JSON格式的操作列表。每个操作是一个包含 'operation' 和 'params' 的字典。不要在JSON前后添加任何解释性文字或代码块标记。
 
 **示例JSON输出:**
 [
@@ -137,7 +137,7 @@ class FeatureGenerator:
 **可供参考的领域知识库**:
 {formatted_knowledge}
 
-请仔细分析以上信息，特别是将知识库中的 `elements` 映射到 `当前可用特征列表`。然后，严格按照系统提示中要求的JSON列表格式，输出你的特征工程计划。
+请仔细分析以上信息，特别是将知识库中的 `elements` 映射到 `当前可用特征列表`。然后，严格按照系统提示中的要求，输出你JSON列表格式的特征工程计划。
 """
         return system_prompt, user_prompt
 
@@ -196,7 +196,7 @@ class FeatureGenerator:
 
         llm_response_str = call_llm(system_prompt, user_prompt)
 
-        print(f"智能体 返回的计划 (原始字符串):\n{llm_response_str}")
+        print(f"智能体返回的计划 (原始字符串):\n{llm_response_str}")
 
         try:
             feature_engineering_plan = json.loads(llm_response_str)

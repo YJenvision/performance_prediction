@@ -45,7 +45,7 @@ def plot_prediction_vs_actual(
         target_metric: str,
         model_name: str,
         dataset_name: str,
-        output_dir: str = "results"
+        output_dir: str = "automl_runs//visualization"
 ) -> str:
     """
     绘制真实值与预测值的对比散点图，并高亮显示在可接受误差范围内的点。
@@ -134,7 +134,7 @@ def plot_error_distribution(
         target_metric: str,
         model_name: str,
         dataset_name: str,
-        output_dir: str = "results"
+        output_dir: str = "automl_runs//visualization"
 ) -> str:
     """
     绘制预测误差的分布直方图。

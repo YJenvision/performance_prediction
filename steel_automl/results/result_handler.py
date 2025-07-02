@@ -97,15 +97,14 @@ class ResultHandler:
         result_package = self.compile_final_result()
         if filepath is None:
             results_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                                       "results_output")
+                                       "automl_runs//result_info")
             os.makedirs(results_dir, exist_ok=True)
             filepath = os.path.join(results_dir,
-                                    f"final_result_{result_package.get('pipeline_run_id', 'unknown_run')}.json")
+                                    f"{result_package.get('pipeline_run_id', 'unknown_run')}.json")
 
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(result_package, f, indent=4, ensure_ascii=False,
-                          default=str)  # default=str for pd.Series, datetime
+                json.dump(result_package, f, indent=4, ensure_ascii=False, default=str)
             print(f"最终结果已保存到: {filepath}")
         except Exception as e:
             print(f"保存最终结果失败: {e}")

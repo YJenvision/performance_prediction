@@ -1,6 +1,6 @@
 import pandas as pd
 import ibm_db
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Union, Tuple
 import sqlalchemy
 from llm_utils import call_llm
 
@@ -40,11 +40,9 @@ def generate_sql_query(
 
     condition_num = 3
 
-    # 辅助函数，用于格式化IN子句的值
     def format_in_clause(values: List[str]) -> str:
         return "({})".format(", ".join(f"'{v}'" for v in values))
 
-    # 根据参数情况动态添加条件
     if sg_sign:
         if len(sg_sign) == 1:
             user_prompt += f"\n{condition_num}. 牌号条件：SG_SIGN = '{sg_sign[0]}'"
@@ -74,51 +72,18 @@ def generate_sql_query(
 
     sql_query = call_llm(system_prompt, user_prompt, model="ds_v3")
 
-    # 删除SELECT之前的所有内容（使用R1可能会响应其他内容，比如在语句之前添加 'sql'）
     select_pos = sql_query.upper().find("SELECT")
     if select_pos > 0:
         sql_query = sql_query[select_pos:]
 
-    # 去除末尾可能的分号
     sql_query = sql_query.strip().rstrip(';')
 
-    # 规则检查生成的SQL是否安全
     if any(keyword in sql_query.upper() for keyword in
            ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE', 'EXEC', 'EXECUTE']):
         raise ValueError("取数阶段生成的SQL语句包含不安全的关键字，停止执行。")
 
     print(f"动态生成的SQL查询: {sql_query}")
     return sql_query
-
-
-def fetch_data_from_excel(sg_sign, target_metric, time_range, product_unit_no, st_no, steel_grade) -> \
-        Optional[pd.DataFrame]:
-    """
-    从Excel文件获取数据，支持钢种条件过滤。
-
-    参数:
-    - sg_sign: 牌号列表。
-    - target_metric: 目标性能指标列名。
-    - time_range: 数据时间范围。
-    - product_unit_no: 机组号列表。
-    - st_no: 出钢记号列表。
-    - steel_grade: 钢种列表（对应SIGN_CODE字段的第5-6位字符）。
-
-    返回:
-    - 过滤后的Pandas DataFrame或None。
-    """
-    print("开始从Excel文件获取数据。")
-    try:
-        df = pd.read_excel(r"D:\Desktop\性能预报智能体测试_Q235B_20250101-20250501.xlsx")
-        print(f"成功从Excel文件获取 {len(df)} 条数据。")
-
-        # 列名大写
-        df.columns = df.columns.str.upper()
-        return df
-
-    except Exception as e:
-        print(f"从Excel文件获取数据失败: {e}")
-        return None
 
 
 class DataLoader:
@@ -155,7 +120,7 @@ class DataLoader:
             self.engine = sqlalchemy.create_engine(connection_string)
 
             with self.engine.connect() as conn:
-                pass  # 测试连接
+                pass
 
             print("数据库连接成功。")
             return True
@@ -181,53 +146,28 @@ class DataLoader:
 
     def fetch_data(self, sg_sign: Optional[List[str]], target_metric: str, time_range: str,
                    product_unit_no: Optional[List[str]], st_no: Optional[List[str]],
-                   steel_grade: Optional[List[str]]) -> Optional[pd.DataFrame]:
+                   steel_grade: Optional[List[str]]) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
         """
-        根据牌号、目标指标、时间范围、机组号、出钢记号和钢种条件动态地从数据库获取数据。
-
-        参数:
-        - sg_sign: 牌号列表。
-        - target_metric: 目标性能指标列名。
-        - time_range: 数据时间范围。
-        - product_unit_no: 机组号列表。
-        - st_no: 出钢记号列表。
-        - steel_grade: 钢种列表（对应SIGN_CODE字段的第5-6位字符）。
+        动态地从数据库获取数据，并返回数据和执行的SQL查询。
 
         返回:
-        - 成功：Pandas DataFrame
-        - 失败：None。
+        - (成功：Pandas DataFrame, 失败：None), (执行的SQL查询语句)
         """
         if not self._connect():
             print("无法连接到数据库，数据获取失败。")
-            return None
+            return None, None
 
-        # 动态构建调试信息
-        debug_info = "开始获取数据:"
-        if sg_sign:
-            debug_info += f" 牌号为'{', '.join(sg_sign)}',"
-        if target_metric:
-            debug_info += f" 目标指标为'{target_metric}',"
-        if time_range:
-            debug_info += f" 时间范围为'{time_range}',"
-        if product_unit_no:
-            debug_info += f" 机组号为'{', '.join(product_unit_no)}',"
-        if st_no:
-            debug_info += f" 出钢记号为'{', '.join(st_no)}',"
-        if steel_grade:
-            debug_info += f" 钢种为'{', '.join(steel_grade)}'"
-
-        print(debug_info.rstrip(','))
-
+        query = None
         try:
-            start_time, end_time = time_range.split('-')
-        except ValueError:
-            from datetime import datetime, timedelta
-            now = datetime.now()
-            end_time = now.strftime("%Y%m%d")
-            start_time = (now - timedelta(days=365)).strftime("%Y%m%d")
-            print(f"时间范围格式无效，使用默认时间范围: {start_time}-{end_time}")
+            try:
+                start_time, end_time = time_range.split('-')
+            except (ValueError, AttributeError):
+                from datetime import datetime, timedelta
+                now = datetime.now()
+                end_time = now.strftime("%Y%m%d")
+                start_time = (now - timedelta(days=365)).strftime("%Y%m%d")
+                print(f"时间范围格式无效，使用默认时间范围: {start_time}-{end_time}")
 
-        try:
             # 动态生成SQL查询
             query = generate_sql_query(sg_sign, start_time, end_time, product_unit_no, st_no, steel_grade)
             df = pd.read_sql(query, self.engine)
@@ -235,13 +175,12 @@ class DataLoader:
             # 列名大写
             df.columns = df.columns.str.upper()
 
-            # 如果指定了钢种条件，添加钢种列用于验证和分析
             if steel_grade and 'SIGN_CODE' in df.columns:
                 df['STEEL_GRADE'] = df['SIGN_CODE'].str[4:6]
 
-            return df
+            return df, query
         except Exception as e:
             print(f"从数据库获取数据失败: {e}")
-            return None
+            return None, query
         finally:
             self._disconnect()

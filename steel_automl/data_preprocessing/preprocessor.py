@@ -327,7 +327,7 @@ class DataPreprocessor:
         dropped_na_count = initial_rows - rows_after_na_drop
 
         # 子步骤 B: 删除目标值为0的行。
-        # 依赖具体业务。在某些任务中0是有效值。
+        # 依赖具体业务。在某些目标性能预测任务中0是有效值。
         invalid_values_to_drop = [0]
         mask_invalid = df[self.target_metric].isin(invalid_values_to_drop)
         dropped_invalid_count = mask_invalid.sum()

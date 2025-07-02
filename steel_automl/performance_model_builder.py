@@ -4,9 +4,12 @@
 # @Project : performance_prediction_agent
 
 import time
-from typing import Dict, Any
+import os
+from datetime import datetime
+from typing import Dict, Any, List
 
 import numpy as np
+import pandas as pd
 
 from config import DB_CONFIG
 from steel_automl.data_acquisition.data_loader import DataLoader
@@ -16,6 +19,51 @@ from steel_automl.model_selection.selector import ModelSelector
 from steel_automl.modeling.trainer import ModelTrainer
 from steel_automl.pipeline.pipeline_builder import PipelineBuilder
 from steel_automl.results.result_handler import ResultHandler
+
+
+def _generate_data_filename(request_params: Dict[str, Any], timestamp_str: str, data_type_str: str) -> str:
+    """
+    根据请求参数和数据类型生成标准化的文件名。
+    命名标准: 目标性能_数据时间范围_牌号_机组_出钢记号_钢种_时间_数据类型.csv
+    """
+
+    def format_param(param_value: Any) -> str:
+        """用于格式化列表或将单个值格式化为字符串的帮助函数。"""
+        if param_value is None:
+            return ""
+        if isinstance(param_value, list):
+            return "-".join(map(str, param_value))
+        return str(param_value)
+
+    parts = [
+        format_param(request_params.get("target_metric")),
+        format_param(request_params.get("time_range")),
+        format_param(request_params.get("sg_sign")),
+        format_param(request_params.get("product_unit_no")),
+        format_param(request_params.get("st_no")),
+        format_param(request_params.get("steel_grade")),
+        timestamp_str,
+        data_type_str
+    ]
+    # 过滤掉空字符串部分并用下划线连接
+    filename = "_".join(filter(None, parts)) + ".csv"
+    return filename.replace(" ", "").replace("/", "-")
+
+
+def _save_dataframe(df: pd.DataFrame, data_type_name: str, request_params: Dict[str, Any], run_dir: str,
+                    timestamp_str: str) -> str:
+    """
+    保存DataFrame到指定目录并返回完整路径。
+    """
+    if df is None or df.empty:
+        return ""
+    data_dir = os.path.join(run_dir, 'data')
+    os.makedirs(data_dir, exist_ok=True)
+    filename = _generate_data_filename(request_params, timestamp_str, data_type_name)
+    filepath = os.path.join(data_dir, filename)
+    df.to_csv(filepath, index=False)
+    print(f"数据已保存: {filepath}")
+    return filepath
 
 
 def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
@@ -36,6 +84,10 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
     - 一个包含模型信息与评估结果的字典。
     """
     start_time_total = time.time()  # 记录本次建模评估流程执行时间
+    run_timestamp = datetime.now()
+    run_timestamp_str = run_timestamp.strftime('%Y%m%d%H%M%S')
+    run_dir = f"automl_runs"
+    os.makedirs(run_dir, exist_ok=True)
 
     user_request = request_params.get("user_request", "用户具体请求描述为空。")
     sg_sign = request_params.get("sg_sign")
@@ -56,15 +108,25 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         # 1. 数据获取
         print("\n模块1: 数据获取...")
         data_loader = DataLoader(db_config=DB_CONFIG)
-        # 取数
-        raw_data = data_loader.fetch_data(sg_sign, target_metric, time_range, product_unit_no, st_no, steel_grade)
+        # 取数，同时获取执行的SQL语句
+        raw_data, sql_query = data_loader.fetch_data(sg_sign, target_metric, time_range, product_unit_no, st_no,
+                                                     steel_grade)
+
+        # 保存原始数据
+        raw_data_path = _save_dataframe(raw_data, "原始数据集", request_params, run_dir, run_timestamp_str)
+
         if raw_data is None or raw_data.empty:
-            pipeline_recorder.add_stage("data_acquisition", "failed", {"error": "未能获取到数据或数据为空"})
+            pipeline_recorder.add_stage("data_acquisition", "failed",
+                                        {"error": "未能获取到数据或数据为空", "sql_query": sql_query},
+                                        artifacts={"raw_data_path": raw_data_path})
             pipeline_recorder.set_final_status("failed")
             final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
             return final_result_package
+
+        # 记录数据获取阶段，包括SQL查询和原始数据路径
         pipeline_recorder.add_stage("data_acquisition", "success",
-                                    {"rows_fetched": len(raw_data), "columns": list(raw_data.columns)})
+                                    {"rows_fetched": len(raw_data), "columns": list(raw_data.columns)},
+                                    artifacts={"sql_query": sql_query, "raw_data_path": raw_data_path})
 
         # 验证1: 目标列是否存在
         if target_metric not in raw_data.columns:
@@ -100,8 +162,10 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         preprocessor = DataPreprocessor(user_request=user_request, target_metric=target_metric)
         df_processed, preprocessing_steps, fitted_preproc_objects = preprocessor.preprocess_data(raw_data.copy())
 
+        # 保存预处理后的数据
+        preprocessed_data_path = _save_dataframe(df_processed, "经过清洗后的数据集", request_params, run_dir, run_timestamp_str)
+
         # 检查预处理步骤中是否有严重错误导致无法继续
-        # (一个简单的检查：如果df_processed为空但原始数据不为空，或者关键步骤失败)
         critical_preprocessing_failed = False
         if df_processed.empty and not raw_data.empty:
             critical_preprocessing_failed = True
@@ -113,7 +177,6 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         if num_failed_preprocessing_steps > 0 and not any(
                 step.get("operation") == "no_action" for step in preprocessing_steps if
                 isinstance(step, dict) and step.get("plan")):  # 有实际操作失败
-            # 智能体计划本身失败，也算严重错误
             llm_plan_failed = any(
                 step.get("step") == "llm_generate_preprocessing_plan" and step.get("status") == "failed" for step in
                 preprocessing_steps)
@@ -124,7 +187,8 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         pipeline_recorder.add_stage("data_preprocessing",
                                     "failed" if critical_preprocessing_failed else "success",
                                     {"steps_details": preprocessing_steps},
-                                    {"fitted_objects_keys": list(fitted_preproc_objects.keys())})
+                                    {"fitted_objects_keys": list(fitted_preproc_objects.keys()),
+                                     "preprocessed_data_path": preprocessed_data_path})
         if critical_preprocessing_failed:
             pipeline_recorder.set_final_status("failed")
             final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
@@ -132,13 +196,14 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
 
         # 3. 特征工程
         print("\n模块3: 特征工程...")
-        # 获取预处理后的特征列 (排除目标列)
         preprocessed_feature_cols = [col for col in df_processed.columns if col != target_metric]
         feature_generator = FeatureGenerator(user_request=user_request, target_metric=target_metric,
                                              preprocessed_columns=preprocessed_feature_cols)
         df_engineered, fe_steps, fitted_fe_objects = feature_generator.generate_features(df_processed.copy())
 
-        # 类似地检查特征工程的关键失败
+        # 保存特征工程后的数据（即最终的训练数据）
+        engineered_data_path = _save_dataframe(df_engineered, "经过特征工程后的最终数据集", request_params, run_dir, run_timestamp_str)
+
         critical_fe_failed = False
         if df_engineered.empty and not df_processed.empty:
             critical_fe_failed = True
@@ -151,7 +216,8 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         pipeline_recorder.add_stage("feature_engineering",
                                     "failed" if critical_fe_failed else "success",
                                     {"steps_details": fe_steps},
-                                    {"fitted_objects_keys": list(fitted_fe_objects.keys())})
+                                    {"fitted_objects_keys": list(fitted_fe_objects.keys()),
+                                     "engineered_data_path": engineered_data_path})
         if critical_fe_failed:
             pipeline_recorder.set_final_status("failed")
             final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
@@ -176,7 +242,6 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
             num_features=X.shape[1],
             num_samples=X.shape[0]
         )
-
         automl_plan, model_selection_log = model_selector.select_model_and_plan()
 
         if not automl_plan or "model_recommendations" not in automl_plan or not automl_plan["model_recommendations"]:
@@ -185,39 +250,34 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
             pipeline_recorder.set_final_status("failed")
             return ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
 
-        # 将用户请求参数也加入到automl_plan中，便于后续模块（如trainer）使用
         automl_plan["user_request_details"] = request_params
-
         pipeline_recorder.add_stage("model_selection_planning", "success",
                                     {"model_plan": automl_plan, "log": model_selection_log})
 
-        # 5. Pipeline构建 (此处简化为记录选择的模型和参数)
-        # 实际的scikit-learn Pipeline对象可以将预处理器和模型串联起来
-        # 目前只选择一个模型进行训练 (例如，系统推荐的第一个，或基于某种策略选择)
-        # 简单开始，选择推荐列表中的第一个模型
-        # 从计划中提取信息
+        # 5. Pipeline构建 (决策)
         plan_details = automl_plan["model_plan"]
         model_recommendations = automl_plan["model_recommendations"]
-
-        # 目前单策略：选择推荐列表中的第一个模型进行训练
         chosen_model_name = list(model_recommendations.keys())[0]
         chosen_model_info = model_recommendations[chosen_model_name]
         data_split_ratio = plan_details.get("data_split_ratio", 0.2)
         hpo_config = plan_details.get("hpo_config", {"method": "RandomizedSearchCV", "n_iter": 30})
+
+        # 将选择的模型名称设置到pipeline记录器中，以生成标准化的pipeline_id
+        pipeline_recorder.set_model_name(chosen_model_name)
 
         pipeline_recorder.add_stage("decision_making", "success",
                                     {"chosen_model": chosen_model_name,
                                      "data_split_ratio": data_split_ratio,
                                      "hpo_config": hpo_config})
 
+        # 6. 模型训练与评估
         print(f"\n模块6: 模型训练与评估 (模型: {chosen_model_name})...")
         trainer = ModelTrainer(
             selected_model_name=chosen_model_name,
             model_info=chosen_model_info,
             hpo_config=hpo_config,
-            automl_plan=automl_plan  # 传递完整的automl_plan
+            automl_plan=automl_plan
         )
-        # 将动态的划分比例传入
         trainer.train_and_evaluate(X.copy(), y.copy(), test_size=data_split_ratio)
 
         pipeline_recorder.add_stage("model_training_evaluation",
@@ -226,28 +286,24 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
                                      "evaluation_metrics": trainer.evaluation_results})
 
         if not trainer.evaluation_results:
-            # 错误处理
             pipeline_recorder.set_final_status("failed")
-            # 未保存过程性记录
             return {"status": "failed", "error": "模型训练或评估失败。"}
 
         # 7. 结果汇总
         print("\n模块7: 结果汇总...")
-        pipeline_recorder.set_final_status("success")  # 如果流程走到这里，认为是成功的
+        pipeline_recorder.set_final_status("success")
 
-        # 创建ResultHandler实例并填充信息
         result_handler = ResultHandler(pipeline_summary=pipeline_recorder.get_pipeline_summary())
         result_handler.add_model_details(
             model_name=chosen_model_name,
             best_hyperparams=trainer.model_instance.best_params_ if trainer.model_instance else None
-            # model_object_ref: 实际保存模型到文件并记录路径
         )
-        result_handler.add_evaluation_metrics(metrics=trainer.evaluation_results)  # 评估结果现在包含train/test和图表路径
+        result_handler.add_evaluation_metrics(metrics=trainer.evaluation_results)
         result_handler.add_feature_importances(importances=trainer.feature_importances)
 
         final_result_package = result_handler.compile_final_result()
 
-        # 保存最终结果
+        # 将最终结果保存到本次运行的目录中
         result_handler.save_final_result()
 
         return final_result_package
@@ -255,19 +311,28 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
     except Exception as e:
         print(f"AutoML流程执行过程中发生未捕获的严重错误: {e}")
         import traceback
-        traceback.print_exc()  # 打印完整的堆栈跟踪
+        traceback.print_exc()
 
         pipeline_recorder.add_stage("global_error_handler", "failed",
                                     {"error_type": type(e).__name__, "message": str(e),
                                      "traceback": traceback.format_exc()})
         pipeline_recorder.set_final_status("failed")
 
-        # 返回错误信息
-        # 未保存过程性记录
         final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
         if "status" not in final_result_package or final_result_package["status"] != "failed":
             final_result_package["status"] = "failed"
         if "error_details" not in final_result_package:
             final_result_package["error_details"] = {"message": str(e), "type": type(e).__name__}
+
+        # 即使失败，也尝试保存最终的pipeline记录
+        if 'pipeline_summary' in final_result_package:
+            try:
+                summary_path = os.path.join(run_dir, "failed_pipeline_summary.json")
+                with open(summary_path, 'w', encoding='utf-8') as f:
+                    import json
+                    json.dump(final_result_package['pipeline_summary'], f, indent=4, ensure_ascii=False)
+                print(f"失败的pipeline摘要已保存至: {summary_path}")
+            except Exception as save_e:
+                print(f"保存失败的pipeline摘要时出错: {save_e}")
 
         return final_result_package
