@@ -76,8 +76,8 @@ class PipelineBuilder:
             format_param(details.get("product_unit_no")),
             format_param(details.get("st_no")),
             format_param(details.get("steel_grade")),
+            self.start_time.strftime('%Y%m%d%H%M%S'),
             self.model_name,
-            self.start_time.strftime('%Y%m%d%H%M%S')
         ]
         # 过滤掉None和空字符串部分，用下划线连接
         pipeline_id = "_".join(filter(None, id_parts))

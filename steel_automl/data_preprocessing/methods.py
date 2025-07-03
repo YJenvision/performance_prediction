@@ -35,16 +35,82 @@ def impute_median(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, None]:
 
 
 def impute_most_frequent(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, None]:
-    """使用众数填充指定列的缺失值。"""
+    """
+    使用众数填充指定列的缺失值，自适应处理不同数据类型。
+
+    Parameters:
+    df : pd.DataFrame, 输入的DataFrame
+    column : str, 需要填充的列名
+
+    Returns:
+    Tuple[pd.DataFrame, None]
+        返回填充后的DataFrame和None
+    """
     if column not in df.columns:
         print(f"警告: 列 '{column}' 不在DataFrame中，无法执行众数填充。")
         return df, None
-    if df[column].isnull().sum() > 0:
+
+    # 检查是否有缺失值
+    if df[column].isnull().sum() == 0:
+        print(f"列 '{column}' 没有缺失值，无需填充。")
+        return df, None
+
+    # 记录原始数据类型
+    original_dtype = df[column].dtype
+    print(f"列 '{column}' 的原始数据类型: {original_dtype}")
+
+    # 根据数据类型选择处理策略
+    if pd.api.types.is_numeric_dtype(df[column]):
+        # 数值类型处理
+        print(f"处理数值类型列 '{column}'...")
+
+        # 对于数值类型，可以直接使用SimpleImputer
         imputer = SimpleImputer(strategy='most_frequent')
-        # 优化: 先将列转为object类型，确保imputer能正确处理混合类型。
-        # 接着使用 .ravel() 将输出转为一维数组。
-        df[column] = imputer.fit_transform(df[[column]].astype(object)).ravel()
-        print(f"列 '{column}' 的缺失值已通过众数填充。")
+        df[column] = imputer.fit_transform(df[[column]]).ravel()
+
+        # 尝试保持原始数据类型
+        try:
+            if original_dtype in ['int8', 'int16', 'int32', 'int64']:
+                # 整数类型
+                df[column] = df[column].astype(original_dtype)
+            elif original_dtype in ['float16', 'float32', 'float64']:
+                # 浮点类型
+                df[column] = df[column].astype(original_dtype)
+            else:
+                # 其他数值类型，保持float64
+                df[column] = df[column].astype('float64')
+        except (ValueError, OverflowError) as e:
+            print(f"警告: 无法将填充后的数据转换回原始类型 {original_dtype}，保持当前类型。错误: {e}")
+
+    elif pd.api.types.is_categorical_dtype(df[column]):
+        # 分类类型处理
+        print(f"处理分类类型列 '{column}'...")
+
+        # 获取众数
+        mode_value = df[column].mode()
+        if len(mode_value) > 0:
+            fill_value = mode_value.iloc[0]
+            df[column] = df[column].fillna(fill_value)
+        else:
+            print(f"警告: 列 '{column}' 无法确定众数，跳过填充。")
+            return df, None
+
+    else:
+        # 对象类型（字符串等）处理
+        print(f"处理对象类型列 '{column}'...")
+
+        # 先尝试使用pandas的众数填充，这样可以保持原始类型
+        mode_values = df[column].mode()
+        if len(mode_values) > 0:
+            fill_value = mode_values.iloc[0]
+            df[column] = df[column].fillna(fill_value)
+        else:
+            # 如果pandas众数计算失败，使用SimpleImputer
+            print(f"使用SimpleImputer处理列 '{column}'...")
+            imputer = SimpleImputer(strategy='most_frequent')
+            df[column] = imputer.fit_transform(df[[column]].astype(object)).ravel()
+
+    print(f"列 '{column}' 的缺失值已通过众数填充完成。填充后数据类型: {df[column].dtype}")
     return df, None
 
 

@@ -163,7 +163,8 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         df_processed, preprocessing_steps, fitted_preproc_objects = preprocessor.preprocess_data(raw_data.copy())
 
         # 保存预处理后的数据
-        preprocessed_data_path = _save_dataframe(df_processed, "经过清洗后的数据集", request_params, run_dir, run_timestamp_str)
+        preprocessed_data_path = _save_dataframe(df_processed, "经过清洗后的数据集", request_params, run_dir,
+                                                 run_timestamp_str)
 
         # 检查预处理步骤中是否有严重错误导致无法继续
         critical_preprocessing_failed = False
@@ -202,7 +203,8 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         df_engineered, fe_steps, fitted_fe_objects = feature_generator.generate_features(df_processed.copy())
 
         # 保存特征工程后的数据（即最终的训练数据）
-        engineered_data_path = _save_dataframe(df_engineered, "经过特征工程后的最终数据集", request_params, run_dir, run_timestamp_str)
+        engineered_data_path = _save_dataframe(df_engineered, "经过特征工程后的最终数据集", request_params, run_dir,
+                                               run_timestamp_str)
 
         critical_fe_failed = False
         if df_engineered.empty and not df_processed.empty:
@@ -261,33 +263,45 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         chosen_model_info = model_recommendations[chosen_model_name]
         data_split_ratio = plan_details.get("data_split_ratio", 0.2)
         hpo_config = plan_details.get("hpo_config", {"method": "RandomizedSearchCV", "n_iter": 30})
-
-        # 将选择的模型名称设置到pipeline记录器中，以生成标准化的pipeline_id
         pipeline_recorder.set_model_name(chosen_model_name)
-
         pipeline_recorder.add_stage("decision_making", "success",
-                                    {"chosen_model": chosen_model_name,
-                                     "data_split_ratio": data_split_ratio,
+                                    {"chosen_model": chosen_model_name, "data_split_ratio": data_split_ratio,
                                      "hpo_config": hpo_config})
 
         # 6. 模型训练与评估
         print(f"\n模块6: 模型训练与评估 (模型: {chosen_model_name})...")
-        trainer = ModelTrainer(
-            selected_model_name=chosen_model_name,
-            model_info=chosen_model_info,
-            hpo_config=hpo_config,
-            automl_plan=automl_plan
-        )
+        trainer = ModelTrainer(selected_model_name=chosen_model_name, model_info=chosen_model_info,
+                               hpo_config=hpo_config, automl_plan=automl_plan)
         trainer.train_and_evaluate(X.copy(), y.copy(), test_size=data_split_ratio)
 
-        pipeline_recorder.add_stage("model_training_evaluation",
-                                    "success" if trainer.evaluation_results else "failed",
-                                    {"training_log": trainer.training_log,
-                                     "evaluation_metrics": trainer.evaluation_results})
+        # 收集所有训练产物的路径用于记录
+        training_artifacts = {}
+        if trainer.evaluation_results:
+            test_eval_metrics = trainer.evaluation_results.get("test", {})
+            if test_eval_metrics:
+                training_artifacts.update({
+                    k: v for k, v in test_eval_metrics.items() if k.endswith("_path")
+                })
+            saved_artifacts = trainer.evaluation_results.get("artifacts", {})
+            training_artifacts.update(saved_artifacts)
 
-        if not trainer.evaluation_results:
+        # 为了 pipeline 记录文件的逻辑性，过滤掉 evaluation_results 中的 artifacts 字段
+        evaluation_results = {
+            key: value for key, value in trainer.evaluation_results.items() if key != "artifacts"
+        }
+
+        pipeline_recorder.add_stage("model_training_evaluation",
+                                    "success" if trainer.evaluation_results and trainer.evaluation_results.get(
+                                        "test") else "failed",
+                                    {"training_log": trainer.training_log,
+                                     "evaluation_metrics": evaluation_results},
+                                    artifacts=training_artifacts)
+
+        if not trainer.evaluation_results or not trainer.evaluation_results.get("test"):
             pipeline_recorder.set_final_status("failed")
-            return {"status": "failed", "error": "模型训练或评估失败。"}
+            final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
+            final_result_package["error_details"] = {"message": "模型训练或评估失败。"}
+            return final_result_package
 
         # 7. 结果汇总
         print("\n模块7: 结果汇总...")

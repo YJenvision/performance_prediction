@@ -17,7 +17,7 @@ def generate_data_profile(df: pd.DataFrame, target_metric: str = None) -> Dict[s
         - 对数值型特征，提供关键的统计摘要（均值、中位数、标准差等），帮助智能体选择最合适的缺失值填充策略。
         - 对类别型特征，提供基数（cardinality），并对低基数特征直接展示其唯一值。
     3.  **极致精简**: 画像中不包含无用信息，有效缩短输入给智能体的上下文长度。
-    4.  **逻辑清晰**: 采纳用户建议，数值型（int, float）将始终被视为 'numeric'，不再根据基数转换为 'categorical'，使类型判断更加一致和稳健。
+    4.  **逻辑清晰**: 数值型（int, float）将始终被视为 'numeric'，不再根据基数转换为 'categorical'，使类型判断更加一致和稳健。
 
     参数:
     - df: 输入的Pandas DataFrame。

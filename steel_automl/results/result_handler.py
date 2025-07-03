@@ -1,9 +1,13 @@
-from typing import Dict, Any, Optional, List
+# @Time    : 2025/7/2
+# @Author  : ZhangJingLiang
+# @Email   : jinglianglink@qq.com
+# @Project : performance_prediction_agent
 
+from typing import Dict, Any, Optional, List
 import numpy as np
 import pandas as pd
 import json
-import os  # 导入os模块
+import os
 
 
 class ResultHandler:
@@ -45,8 +49,6 @@ class ResultHandler:
         - metrics: 包含评估指标 (如 MSE, R2) 的字典。
         """
         self.evaluation_metrics = metrics
-        if metrics:
-            print(f"结果处理器: 添加评估指标 - R2 Score: {metrics.get('r2', 'N/A')}")
 
     def add_feature_importances(self, importances: Optional[pd.Series]):
         """
@@ -56,9 +58,6 @@ class ResultHandler:
         - importances: Pandas Series，索引为特征名，值为重要性分数。
         """
         self.feature_importances = importances
-        if importances is not None:
-            print(
-                f"结果处理器: 添加特征重要性 (Top 3): \n{importances.head(3).to_dict() if not importances.empty else 'No importances'}")
 
     def compile_final_result(self) -> Dict[str, Any]:
         """
@@ -96,7 +95,8 @@ class ResultHandler:
         """
         result_package = self.compile_final_result()
         if filepath is None:
-            results_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+            # 获取祖父目录路径
+            results_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
                                        "automl_runs//result_info")
             os.makedirs(results_dir, exist_ok=True)
             filepath = os.path.join(results_dir,
