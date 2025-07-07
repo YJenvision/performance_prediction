@@ -59,7 +59,7 @@ class PipelineBuilder:
             self.end_time = datetime.datetime.now()
 
         # 标准化 Pipeline ID 生成逻辑
-        # 命名标准: 目标性能_数据时间范围_牌号_机组_出钢记号_钢种_模型算法_时间
+        # 命名标准: 目标性能_数据时间范围_牌号_机组_出钢记号_钢种_时间_模型算法
         def format_param(param_value: Any) -> str:
             """Helper to format list or single value to string."""
             if param_value is None:

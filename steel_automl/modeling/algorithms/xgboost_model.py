@@ -10,7 +10,7 @@ from scipy.stats import randint, uniform
 from config import DEFAULT_RANDOM_STATE
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 
-# 尝试导入torch以检测GPU
+
 try:
     import torch
 

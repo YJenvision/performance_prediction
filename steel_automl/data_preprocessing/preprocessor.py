@@ -376,7 +376,7 @@ class DataPreprocessor:
         # 调用优化后的画像生成函数
         data_profile = generate_data_profile(df_screened, target_metric=self.target_metric)
         data_profile_str = json.dumps(data_profile, indent=2, ensure_ascii=False)
-        self.applied_steps.append({"step": "生成数据画像", "status": "success"})  # 是否要记录数据画像信息？
+        self.applied_steps.append({"step": "生成数据画像", "status": "success", "data_profile": data_profile})
         print(f"数据画像：\n{data_profile_str}")
 
         print("步骤2: 智能体为剩余特征制定详细预处理计划...")

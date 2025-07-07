@@ -24,8 +24,7 @@ class ResultHandler:
         self.feature_importances: Optional[pd.Series] = None
         self.overall_status: str = pipeline_summary.get("final_status", "unknown")
 
-    def add_model_details(self, model_name: str, best_hyperparams: Optional[Dict[str, Any]],
-                          model_object_ref: Optional[str] = None):
+    def add_model_details(self, model_name: str, best_hyperparams: Optional[Dict[str, Any]]):
         """
         添加最终选择和训练的模型的详细信息。
 
@@ -36,10 +35,8 @@ class ResultHandler:
         """
         self.final_model_info = {
             "model_name": model_name,
-            "best_hyperparameters": best_hyperparams,
-            "model_object_reference": model_object_ref if model_object_ref else "Not explicitly saved in this version"
+            "best_hyperparameters": best_hyperparams
         }
-        print(f"结果处理器: 添加模型详情 - {model_name}")
 
     def add_evaluation_metrics(self, metrics: Optional[Dict[str, float]]):
         """

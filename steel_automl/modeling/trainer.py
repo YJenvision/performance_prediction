@@ -104,7 +104,7 @@ class ModelTrainer:
 
     def train_and_evaluate(self, X: pd.DataFrame, y: pd.Series, test_size: float) -> None:
         """
-        执行模型训练、评估、并保存产物。
+        执行模型训练、评估、并保存过程产物。
         """
         print(f"\n--- 开始训练模型: {self.model_name} ---")
         log_entry = {"step": "data_split", "test_size": test_size, "random_state": DEFAULT_RANDOM_STATE}
