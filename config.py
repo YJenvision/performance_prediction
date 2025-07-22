@@ -11,7 +11,8 @@ OPENAI_API_BASE_QWEN = "http://acv-gydn.baocloud.cn/qwen2_5_vllm/v1"
 OPENAI_API_KEY_QWEN = "none"
 LLM_MODEL_NAME_QWEN = "Qwen2.5-72B-Instruct-AWQ"
 
-EMBEDDING_API_URL = r"http://acv-gydn.baocloud.cn/embeddingbge/embed_string_m3/"
+# EMBEDDING_API_URL = r"http://acv-gydn.baocloud.cn/embeddingbge/embed_string_m3/"
+EMBEDDING_API_URL = r"http://localhost:8000/embedding"  # 本地bge_m3部署
 
 # 知识库文件路径
 KB_DIR = os.path.join(os.path.dirname(__file__), "knowledge_base", "vector_stores")

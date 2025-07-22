@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, Tuple, List, Generator
 from llm_utils import call_llm
 from knowledge_base.kb_service import KnowledgeBaseService
 from config import MODEL_SELECTION_KB_NAME, HISTORICAL_CASES_KB_NAME
@@ -55,25 +55,17 @@ class ModelSelector:
 
     def _load_error_config(self) -> Dict:
         """加载误差范围配置文件。"""
-        # 假设配置文件与此脚本在同一目录下或可访问的路径
         config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'error_config.json')
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
-            print("警告: 误差配置文件 'error_config.json' 未找到或格式错误，将使用默认值。")
-            return {
-                "default": {
-                    "type": "percentage",
-                    "value": 5
-                }
-            }
+            return {"default": {"type": "percentage", "value": 5}}
 
-    def _determine_acceptable_error(self) -> Tuple[Dict[str, Any], str]:
+    def _determine_acceptable_error(self) -> Generator[Dict[str, Any], None, Tuple[Dict[str, Any], str]]:
         """
-        使用智能体根据用户请求和配置文件确定可接受的误差范围。
+        使用智能体根据用户请求和配置文件确定可接受的误差范围，现在是一个生成器。
         """
-        print("\n--- 正在确定可接受的误差范围 ---")
         system_prompt = f"""
 你是一位领域专家，任务是为机器学习回归模型的性能评估确定一个“可接受的误差范围”。
 
@@ -101,26 +93,36 @@ class ModelSelector:
 """
         user_prompt = f"""
 请为以下任务确定可接受的误差范围。
-
 **用户原始请求:**
 {self.user_request}
-
 **目标性能指标:**
 {self.target_metric}
-
 请严格按照系统提示中要求的JSON格式输出你的决策。
 """
+        llm_gen = call_llm(system_prompt, user_prompt, model="ds_v3")
+        llm_response_str = ""
+        while True:
+            try:
+                chunk = next(llm_gen)
+                if chunk.get("type") == "error":
+                    yield chunk
+                    error_msg = "确定误差范围失败: 智能体调用失败。将使用配置文件中的默认值。"
+                    default_error = self.error_config.get(self.target_metric, self.error_config.get("default"))
+                    default_error["source"] = "fallback"
+                    return default_error, error_msg
+                yield chunk
+            except StopIteration as e:
+                llm_response_str = e.value
+                break
+
         try:
-            llm_response_str = call_llm(system_prompt, user_prompt, model="ds_v3")
             parsed_response = json.loads(llm_response_str)
             if "type" in parsed_response and "value" in parsed_response and "source" in parsed_response:
-                print(f"成功确定误差范围: {parsed_response}")
                 return parsed_response, f"成功确定误差范围: {parsed_response}"
             else:
                 raise ValueError("智能体响应缺少必要的键。")
-        except (Exception) as e:
+        except Exception as e:
             error_msg = f"确定误差范围失败: {e}。将使用配置文件中的默认值。"
-            print(f"警告: {error_msg}")
             default_error = self.error_config.get(self.target_metric, self.error_config.get("default"))
             default_error["source"] = "fallback"
             return default_error, error_msg
@@ -215,99 +217,97 @@ class ModelSelector:
         return system_prompt, user_prompt
 
     def _get_default_plan(self, reason: str, acceptable_error: Dict) -> Dict[str, Any]:
-        """在LLM调用失败时，提供一个默认的后备计划。"""
-        print(f"警告: 正在启用默认后备计划。原因: {reason}")
+        """在智能体调用失败时，提供一个默认的后备计划。"""
         return {
             "model_plan": {
-                "reason": "由于局部智能体在模型算法方案制定过程中失败或响应无效而导致的缺省计划。",
+                "reason": f"由于智能体失败或响应无效而启用后备计划: {reason}",
                 "acceptable_error": acceptable_error,
                 "data_split_ratio": 0.2,
-                "hpo_config": {
-                    "method": "RandomizedSearchCV",
-                    "n_iter": 30,
-                    "cv_folds": 3,
-                    "scoring_metric": "neg_mean_squared_error"
-                }
+                "hpo_config": {"method": "RandomizedSearchCV", "n_iter": 30, "cv_folds": 3,
+                               "scoring_metric": "neg_mean_squared_error"}
             },
             "model_recommendations": {
                 "RandomForestRegressor": {
                     "reason": "默认回退模型，通常稳健且表现良好。",
-                    "hyperparameter_suggestions": {
-                        "n_estimators": [50, 150],
-                        "max_depth": [5, 20],
-                        "min_samples_split": [2, 10]
-                    }
+                    "hyperparameter_suggestions": {"n_estimators": [50, 150], "max_depth": [5, 20],
+                                                   "min_samples_split": [2, 10]}
                 }
             }
         }
 
-    def select_model_and_plan(self) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    def select_model_and_plan(self) -> Generator[Dict[str, Any], None, Tuple[Dict[str, Any], List[Dict[str, Any]]]]:
         """
-        执行AutoML计划生成的主流程。
-
-        返回:
-        - final_plan: 一个字典，包含完整的算法模型计划。
-        - selection_log: 过程日志。
+        执行AutoML计划生成的主流程，现在是一个生成器。
         """
-        print("\n--- 开始生成AutoML计划 ---")
+        current_stage = "模型选择与HPO计划"
         log = []
         final_plan = {}
-        llm_response_str = ""
 
         # 步骤 1: 确定可接受的误差范围
-        acceptable_error, error_log_msg = self._determine_acceptable_error()
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "running", "detail": "正在确定可接受的误差范围..."}}
+        error_gen = self._determine_acceptable_error()
+        acceptable_error, error_log_msg = None, ""
+        while True:
+            try:
+                chunk = next(error_gen)
+                yield chunk
+            except StopIteration as e:
+                acceptable_error, error_log_msg = e.value
+                break
         log.append({"step": "determine_acceptable_error", "details": error_log_msg})
+        if acceptable_error is None:  # Error already yielded
+            return self._get_default_plan("无法确定误差范围", {}), log
 
         # 步骤 2: 基于误差范围生成完整的建模计划
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "running", "detail": "正在制定模型选择与HPO计划..."}}
+        system_prompt, user_prompt = self._generate_llm_prompt(acceptable_error)
+
+        llm_gen = call_llm(system_prompt, user_prompt)
+        llm_response_str = ""
+        agent_failed = False
+        while True:
+            try:
+                chunk = next(llm_gen)
+                if chunk.get("type") == "error":
+                    yield chunk
+                    agent_failed = True
+                    break
+                yield chunk
+            except StopIteration as e:
+                llm_response_str = e.value
+                break
+
+        if agent_failed or "Agent failed" in llm_response_str:
+            error_msg = "智能体在生成计划时失败。"
+            log.append({"step": "llm_generate_plan", "status": "failed", "error": error_msg})
+            final_plan = self._get_default_plan(error_msg, acceptable_error)
+            log.append({"step": "fallback_plan_activated", "status": "success"})
+            return final_plan, log
+
         try:
-            system_prompt, user_prompt = self._generate_llm_prompt(acceptable_error)
-            llm_response_str = call_llm(system_prompt, user_prompt)
-
             parsed_response = json.loads(llm_response_str)
-
-            print("算法模型选择过程中的原始响应", parsed_response)
-            # 验证顶层结构
             if "model_plan" not in parsed_response or "model_recommendations" not in parsed_response:
                 raise ValueError("响应缺少 'model_plan' 或 'model_recommendations' 顶级键。")
 
-            # 验证并提取模型推荐
             recommendations = parsed_response.get("model_recommendations", {})
             if not isinstance(recommendations, dict) or not recommendations:
                 raise ValueError("响应中的 'model_recommendations' 必须是一个非空字典。")
 
-            valid_recommendations = {}
-            for model_name, model_info in recommendations.items():
-                if model_name not in self.available_models:
-                    log.append({"warning": f"LLM recommended an unsupported model: {model_name}"})
-                    continue  # 忽略不支持的模型
-                if isinstance(model_info,
-                              dict) and "reason" in model_info and "hyperparameter_suggestions" in model_info:
-                    valid_recommendations[model_name] = model_info
-                else:
-                    log.append({"warning": f"LLM provided malformed info for model: {model_name}"})
-
+            valid_recommendations = {name: info for name, info in recommendations.items() if
+                                     name in self.available_models}
             if not valid_recommendations:
-                raise ValueError("LLM未提供任何受支持且格式正确的模型推荐。")
+                raise ValueError("智能体未提供任何受支持的模型推荐。")
 
-            # 如果一切顺利，构建最终计划
-            final_plan = {
-                "model_plan": parsed_response["model_plan"],
-                "model_recommendations": valid_recommendations
-            }
-            # 确保从error determination步骤来的误差范围被正确设置
+            final_plan = {"model_plan": parsed_response["model_plan"], "model_recommendations": valid_recommendations}
             final_plan["model_plan"]["acceptable_error"] = acceptable_error
-
             log.append({"step": "llm_generate_plan", "status": "success", "plan": final_plan})
-            print(
-                f"成功生成计划。HPO方法: {final_plan['model_plan']['hpo_config']['method']}. 推荐模型: {list(final_plan['model_recommendations'].keys())}")
-
         except (json.JSONDecodeError, ValueError, TypeError) as e:
-            error_msg = f"解析或验证LLM响应失败: {e}"
-            print(f"错误: {error_msg}")
-            print(f"LLM原始输出: {llm_response_str if llm_response_str else 'N/A'}")
-            log.append({"step": "llm_generate_plan", "status": "failed", "error": error_msg})
+            error_msg = f"智能体解析或验证响应失败: {e}"
+            log.append(
+                {"step": "llm_generate_plan", "status": "failed", "error": error_msg, "raw_response": llm_response_str})
             final_plan = self._get_default_plan(error_msg, acceptable_error)
             log.append({"step": "fallback_plan_activated", "status": "success"})
 
-        print("--- AutoML计划生成完成 ---")
         return final_plan, log

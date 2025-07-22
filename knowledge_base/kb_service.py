@@ -130,9 +130,11 @@ class KnowledgeBaseService:
                         "similarity_score": 1 / (1 + distances[0][i]) if distances[0][i] >= 0 else -1
                         # 简单转换为相似度，L2距离越小越相似
                     })
+                    print(f"距离: {distances[0][i]}, 相似度: {results[-1]['similarity_score']}")
                 else:
                     # 目前经常返回，待检查什么情况。
                     print(f"警告: 搜索返回了无效的索引 {idx}。")
+            print("搜索成功。")
             return results
         except Exception as e:
             print(f"在知识库 '{self.kb_name}' 中搜索失败: {e}")

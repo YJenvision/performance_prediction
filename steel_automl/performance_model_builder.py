@@ -7,10 +7,7 @@ import time
 import os
 import pickle
 from datetime import datetime
-from typing import Dict, Any, List
-
-import numpy as np
-import pandas as pd
+from typing import Dict, Any, List, Tuple, Generator
 
 from config import DB_CONFIG
 from steel_automl.data_acquisition.data_loader import DataLoader
@@ -18,104 +15,44 @@ from steel_automl.data_preprocessing.preprocessor import DataPreprocessor
 from steel_automl.feature_engineering.feature_generator import FeatureGenerator
 from steel_automl.model_selection.selector import ModelSelector
 from steel_automl.modeling.trainer import ModelTrainer
+from steel_automl.performance_model_builder_utils import _generate_filename_prefix, _save_dataframe, \
+    _save_fitted_objects
 from steel_automl.pipeline.pipeline_builder import PipelineBuilder
 from steel_automl.results.result_handler import ResultHandler
 
 
-def _generate_filename_prefix(request_params: Dict[str, Any], timestamp_str: str) -> str:
+def _consume_sub_generator(generator: Generator) -> Generator[Dict[str, Any], None, Tuple[Any, bool]]:
     """
-    根据请求参数生成标准化的文件名头部。
-    命名标准: 目标性能_数据时间范围_牌号_机组_出钢记号_钢种_时间
+    一个辅助生成器，用于消费子生成器（如数据加载器或预处理器），传递其中间消息，并检查是否有错误。
+    它本身是一个生成器，最终会 return 一个元组 (final_return_value, has_failed)。
     """
+    final_return_value = None
+    has_failed = False
+    while True:
+        try:
+            chunk = next(generator)
+            payload = chunk.get("payload", {})
+            if chunk.get("type") == "error" or \
+                    (chunk.get("type") == "status_update" and payload.get("status") == "failed"):
+                has_failed = True
 
-    def format_param(param_value: Any) -> str:
-        """用于格式化列表或将单个值格式化为字符串的帮助函数。"""
-        if param_value is None:
-            return ""
-        if isinstance(param_value, list):
-            return "-".join(map(str, param_value))
-        return str(param_value)
+            yield chunk  # 将子生成器的所有消息（状态、思考、错误）都传递出去
 
-    parts = [
-        format_param(request_params.get("target_metric")),
-        format_param(request_params.get("time_range")),
-        format_param(request_params.get("sg_sign")),
-        format_param(request_params.get("product_unit_no")),
-        format_param(request_params.get("st_no")),
-        format_param(request_params.get("steel_grade")),
-        timestamp_str,
-    ]
-    # 过滤掉空字符串部分并用下划线连接
-    prefix = "_".join(filter(None, parts))
-    return prefix.replace(" ", "").replace("/", "-")
-
-
-def _generate_data_filename(filename_prefix: str, data_type_str: str) -> str:
-    """
-    根据文件名头部和数据类型生成标准化的数据文件名。
-    """
-    return f"{filename_prefix}_{data_type_str}.csv"
+            if has_failed:
+                # 如果检测到失败，立即停止消费并返回
+                return None, True
+        except StopIteration as e:
+            # 子生成器正常结束，捕获其返回值
+            final_return_value = e.value
+            break
+    return final_return_value, has_failed
 
 
-def _save_dataframe(df: pd.DataFrame, data_type_name: str, filename_prefix: str, run_dir: str) -> str:
-    """
-    保存DataFrame到指定目录并返回完整路径。
-    """
-    if df is None or df.empty:
-        return ""
-    data_dir = os.path.join(run_dir, 'data')
-    os.makedirs(data_dir, exist_ok=True)
-    filename = _generate_data_filename(filename_prefix, data_type_name)
-    filepath = os.path.join(data_dir, filename)
-    df.to_csv(filepath, index=False)
-    print(f"数据已保存: {filepath}")
-    return filepath
-
-
-def _save_fitted_objects(objects: Dict[str, Any], filename_prefix: str, run_dir: str, object_type: str) -> str:
-    """
-    使用pickle保存拟合的对象（如预处理器、特征生成器）。
-    这些对象对于在部署后转换新数据至关重要。
-
-    参数:
-    - objects: 包含已拟合转换器的字典。
-    - filename_prefix: 标准化的文件名头部。
-    - run_dir: 本次运行的根目录。
-    - object_type: 对象的类型描述 (e.g., 'preprocessors', 'feature_generators')。
-
-    返回:
-    - 保存文件的完整路径，如果失败则返回空字符串。
-    """
-    if not objects:
-        return ""
-
-    run_dir = os.path.join(run_dir, object_type)
-
-    # 确保主运行目录存在
-    os.makedirs(run_dir, exist_ok=True)
-
-    # 定义文件名，例如: ..._preprocessors.pkl
-    filename = f"{filename_prefix}_{object_type}.pkl"
-    filepath = os.path.join(run_dir, filename)
-
-    try:
-        with open(filepath, 'wb') as f:
-            pickle.dump(objects, f)
-        print(f"拟合的对象已保存: {filepath}")
-        return filepath
-    except Exception as e:
-        print(f"错误: 保存拟合的对象到 {filepath} 失败: {e}")
-        return ""
-
-
-def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
+def performanceModelBuilder(
+        request_params: Dict[str, Any]
+) -> Generator[Dict[str, Any], None, None]:
     """
     性能预报模型AutoML主流程。
-
-    参数:
-    - request_params: 包含用户请求的字典。
-    返回:
-    - 一个包含模型信息与评估结果的字典。
     """
     start_time_total = time.time()
     run_timestamp = datetime.now()
@@ -123,81 +60,75 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
     run_dir = "automl_runs"
     os.makedirs(run_dir, exist_ok=True)
 
-    # 生成本次运行所有产物的标准化文件名头部
     filename_prefix = _generate_filename_prefix(request_params, run_timestamp_str)
-
     user_request = request_params.get("user_request", "用户具体请求描述为空。")
     target_metric = request_params.get("target_metric")
 
     if not target_metric:
-        return {"status": "failed", "error": "请求参数不完整 (目标性能字段target_metric必须提供)。"}
+        yield {"type": "error", "payload": {"stage": "初始化", "message": "缺少目标指标 (target_metric)。"}}
+        return
 
     pipeline_recorder = PipelineBuilder(user_request_details=request_params)
-    final_result_package = {"status": "pending"}
 
     try:
         # 1. 数据获取
-        print("\n模块1: 数据获取...")
+        current_stage = "数据获取"
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "running", "detail": "初始化数据加载器..."}}
         data_loader = DataLoader(db_config=DB_CONFIG)
-        raw_data, sql_query = data_loader.fetch_data(
-            request_params.get("sg_sign"),
-            target_metric,
-            request_params.get("time_range"),
-            request_params.get("product_unit_no"),
-            request_params.get("st_no"),
-            request_params.get("steel_grade")
+        # fetch_data_generator = data_loader.fetch_data(
+        #     sg_sign=request_params.get("sg_sign"),
+        #     target_metric=request_params.get("target_metric"),
+        #     time_range=request_params.get("time_range"),
+        #     product_unit_no=request_params.get("product_unit_no"),
+        #     st_no=request_params.get("st_no"),
+        #     steel_grade=request_params.get("steel_grade")
+        # )
+        fetch_data_generator = data_loader.fetch_data_from_excel(
+            sg_sign=request_params.get("sg_sign"),
+            target_metric=request_params.get("target_metric"),
+            time_range=request_params.get("time_range"),
+            product_unit_no=request_params.get("product_unit_no"),
+            st_no=request_params.get("st_no"),
+            steel_grade=request_params.get("steel_grade")
         )
 
-        raw_data_path = _save_dataframe(raw_data, "原始数据集", filename_prefix, run_dir)
+        returned_value, has_failed = yield from _consume_sub_generator(fetch_data_generator)
+        if has_failed:
+            return
+
+        raw_data, sql_query = returned_value
 
         if raw_data is None or raw_data.empty:
-            pipeline_recorder.add_stage("data_acquisition", "failed",
-                                        {"error": "未能获取到数据或数据为空", "sql_query": sql_query},
-                                        artifacts={"raw_data_path": raw_data_path})
-            pipeline_recorder.set_final_status("failed")
-            return ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
+            error_detail = "未能获取到有效数据或数据集为空。"
+            yield {"type": "error",
+                   "payload": {"stage": current_stage, "message": error_detail, "details": {"sql_query": sql_query}}}
+            return
 
-        pipeline_recorder.add_stage("data_acquisition", "success",
-                                    {"rows_fetched": len(raw_data), "columns": list(raw_data.columns)},
-                                    artifacts={"sql_query": sql_query, "raw_data_path": raw_data_path})
-
-        # 验证1: 目标列是否存在
-        if target_metric not in raw_data.columns:
-            pipeline_recorder.add_stage("data_validation", "failed",
-                                        {"error": f"目标列 '{target_metric}' 在获取的数据中不存在，无法进行训练。"})
-            pipeline_recorder.set_final_status("failed")
-            final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
-            return final_result_package
-
-        # 验证2: 目标列全为空值
-        raw_data[target_metric] = raw_data[target_metric].replace(
-            [r'^\s*$', r'\(?null\)?', 'null', 'nan'],
-            np.nan,
-            regex=True
-        )
-        if raw_data[target_metric].isnull().all():
-            pipeline_recorder.add_stage("data_validation", "failed",
-                                        {"error": f"目标列 '{target_metric}' 全部为空值，无法进行训练。"})
-            pipeline_recorder.set_final_status("failed")
-            final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
-            return final_result_package
-
-        # 验证3: 目标列为常量列
-        if raw_data[target_metric].nunique() == 1:
-            pipeline_recorder.add_stage("data_validation", "failed",
-                                        {"error": f"目标列 '{target_metric}' 是常量列（所有值相同），无法进行训练。"})
-            pipeline_recorder.set_final_status("failed")
-            final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
-            return final_result_package
+        _save_dataframe(raw_data, "原始数据集", filename_prefix, run_dir)
+        pipeline_recorder.add_stage(current_stage, "success", {"sql_query": sql_query, "num_rows": len(raw_data)})
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "success", "detail": f"成功获取 {len(raw_data)} 条数据。"}}
 
         # 2. 数据预处理
-        print("\n模块2: 数据预处理...")
+        current_stage = "数据预处理"
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "running", "detail": "开始数据预处理..."}}
+
         preprocessor = DataPreprocessor(user_request=user_request, target_metric=target_metric)
-        df_processed, preprocessing_steps, fitted_preproc_objects = preprocessor.preprocess_data(raw_data.copy())
+        preprocess_generator = preprocessor.preprocess_data(raw_data.copy())
+
+        # 使用辅助函数消费数据预处理生成器
+        returned_value, has_failed = yield from _consume_sub_generator(preprocess_generator)
+
+        if has_failed:
+            pipeline_recorder.add_stage(current_stage, "failed", {"details": "数据预处理流程因错误中断。"})
+            pipeline_recorder.set_final_status("failed")
+            return
+
+        df_processed, preprocessing_steps, fitted_preproc_objects = returned_value
 
         preprocessed_data_path = _save_dataframe(df_processed, "经过清洗后的数据集", filename_prefix, run_dir)
-
-        # 保存拟合的预处理对象，并将路径添加到产物记录中
         preproc_artifacts = {
             "fitted_objects_keys": list(fitted_preproc_objects.keys()),
             "preprocessed_data_path": preprocessed_data_path
@@ -206,43 +137,51 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         if saved_preproc_path:
             preproc_artifacts["fitted_preprocessors_path"] = saved_preproc_path
 
-        # 检查预处理步骤中是否有严重错误导致无法继续
         critical_preprocessing_failed = False
         if df_processed.empty and not raw_data.empty:
             critical_preprocessing_failed = True
             print("错误: 数据预处理后DataFrame为空。")
-        # 检查preprocessing_steps中的错误状态
-        num_failed_preprocessing_steps = sum(1 for step in preprocessing_steps if
-                                             isinstance(step, dict) and step.get("status") == "failed" and step.get(
-                                                 "step") != "llm_generate_preprocessing_plan")  # 不算智能体本身的失败
-        if num_failed_preprocessing_steps > 0 and not any(
-                step.get("operation") == "no_action" for step in preprocessing_steps if
-                isinstance(step, dict) and step.get("plan")):  # 有实际操作失败
-            llm_plan_failed = any(
-                step.get("step") == "llm_generate_preprocessing_plan" and step.get("status") == "failed" for step in
-                preprocessing_steps)
-            if llm_plan_failed:
-                critical_preprocessing_failed = True
-                print("错误: 智能体未能成功生成预处理计划。")
 
-        pipeline_recorder.add_stage("data_preprocessing",
+        llm_plan_failed = any(
+            step.get("step") == "生成详细预处理计划" and step.get("status") == "failed" for step in preprocessing_steps
+        )
+        if llm_plan_failed:
+            critical_preprocessing_failed = True
+            print("错误: 智能体未能成功生成预处理计划。")
+
+        pipeline_recorder.add_stage(current_stage,
                                     "failed" if critical_preprocessing_failed else "success",
                                     {"steps_details": preprocessing_steps},
                                     artifacts=preproc_artifacts)
+
         if critical_preprocessing_failed:
+            yield {"type": "error", "payload": {"stage": current_stage, "message": "关键预处理步骤失败，流程中止。"}}
             pipeline_recorder.set_final_status("failed")
-            return ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
+            return
+
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "success", "detail": "数据预处理工作完成。"}}
 
         # 3. 特征工程
-        print("\n模块3: 特征工程...")
+        current_stage = "特征工程"
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "running", "detail": "开始特征工程..."}}
+
         preprocessed_feature_cols = [col for col in df_processed.columns if col != target_metric]
         feature_generator = FeatureGenerator(user_request=user_request, target_metric=target_metric,
                                              preprocessed_columns=preprocessed_feature_cols)
-        df_engineered, fe_steps, fitted_fe_objects = feature_generator.generate_features(df_processed.copy())
+
+        fe_generator = feature_generator.generate_features(df_processed.copy())
+        returned_value, has_failed = yield from _consume_sub_generator(fe_generator)
+
+        if has_failed:
+            pipeline_recorder.add_stage(current_stage, "failed", {"details": "特征工程流程因错误中断。"})
+            return
+
+        df_engineered, fe_steps, fitted_fe_objects = returned_value
 
         engineered_data_path = _save_dataframe(df_engineered, "经过特征工程后的最终数据集", filename_prefix, run_dir)
 
-        # 保存拟合的特征工程对象，并将路径添加到产物记录中
         fe_artifacts = {
             "fitted_objects_keys": list(fitted_fe_objects.keys()),
             "engineered_data_path": engineered_data_path
@@ -260,45 +199,62 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
             critical_fe_failed = True
             print("错误: 智能体未能成功生成特征工程计划。")
 
-        pipeline_recorder.add_stage("feature_engineering",
+        pipeline_recorder.add_stage(current_stage,
                                     "failed" if critical_fe_failed else "success",
                                     {"steps_details": fe_steps},
                                     artifacts=fe_artifacts)
         if critical_fe_failed:
+            yield {"type": "error", "payload": {"stage": current_stage, "message": "关键特征工程步骤失败，流程中止。"}}
             pipeline_recorder.set_final_status("failed")
-            return ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
+            return
 
-        # 准备建模数据
         X = df_engineered.drop(columns=[target_metric], errors='ignore')
         y = df_engineered[target_metric]
-
         if X.empty:
-            pipeline_recorder.add_stage("data_preparation_for_modeling", "failed",
-                                        {"error": "特征集X为空，无法进行模型训练。"})
-            pipeline_recorder.set_final_status("failed")
-            return ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
+            yield {"type": "error", "payload": {"stage": current_stage, "message": "训练特征集为空，无法进行模型训练。"}}
+            return
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "success", "detail": "特征工程完成。"}}
 
         # 4. 模型选择与计划制定
-        print("\n模块4: 模型选择与计划制定...")
+        current_stage = "模型选择与计划制定"
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "running", "detail": "开始模型选择与计划制定..."}}
+
         model_selector = ModelSelector(
             user_request=user_request,
             target_metric=target_metric,
             num_features=X.shape[1],
             num_samples=X.shape[0]
         )
-        automl_plan, model_selection_log = model_selector.select_model_and_plan()
+
+        plan_generator = model_selector.select_model_and_plan()
+        returned_value, has_failed = yield from _consume_sub_generator(plan_generator)
+
+        if has_failed:
+            pipeline_recorder.add_stage("model_selection_planning", "failed", {"details": "模型选择流程因错误中断。"})
+            return
+
+        automl_plan, model_selection_log = returned_value
+
+        # 将完整的用户请求参数添加到automl_plan中，
+        # 以确保后续模块（ModelTrainer）可以访问它们以生成正确格式的文件名。
+        if automl_plan:
+            automl_plan["user_request_details"] = request_params
 
         if not automl_plan or "model_recommendations" not in automl_plan or not automl_plan["model_recommendations"]:
+            error_msg = "未能生成有效的模型算法计划。"
             pipeline_recorder.add_stage("model_selection_planning", "failed",
-                                        {"log": model_selection_log, "error": "未能生成任何有效的AutoML计划。"})
-            pipeline_recorder.set_final_status("failed")
-            return ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
+                                        {"log": model_selection_log, "error": error_msg})
+            yield {"type": "error", "payload": {"stage": current_stage, "message": error_msg}}
+            return
 
-        automl_plan["user_request_details"] = request_params
         pipeline_recorder.add_stage("model_selection_planning", "success",
                                     {"model_plan": automl_plan, "log": model_selection_log})
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "success", "detail": "模型选择与计划制定完成。"}}
 
-        # 5. Pipeline构建 (决策)
+        # 5. Pipeline构建
         plan_details = automl_plan["model_plan"]
         model_recommendations = automl_plan["model_recommendations"]
         chosen_model_name = list(model_recommendations.keys())[0]
@@ -311,33 +267,48 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
                                      "hpo_config": hpo_config})
 
         # 6. 模型训练与评估
-        print(f"\n模块6: 模型训练与评估 (模型: {chosen_model_name})...")
+        current_stage = "模型训练与评估"
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "running",
+                           "detail": f"开始训练模型: {chosen_model_name}..."}}
+
         trainer = ModelTrainer(selected_model_name=chosen_model_name, model_info=chosen_model_info,
                                hpo_config=hpo_config, automl_plan=automl_plan)
-        trainer.train_and_evaluate(X.copy(), y.copy(), test_size=data_split_ratio)
 
+        train_generator = trainer.train_and_evaluate(X.copy(), y.copy(), test_size=data_split_ratio)
+        training_succeeded, has_failed = yield from _consume_sub_generator(train_generator)
+
+        if has_failed or not training_succeeded:
+            error_msg = "模型训练和评估流程失败。"
+            pipeline_recorder.add_stage("model_training_evaluation", "failed",
+                                        {"training_log": trainer.training_log, "error": error_msg})
+            pipeline_recorder.set_final_status("failed")
+            # 训练器应该已经给出了错误消息，所以我们可以返回。
+            return
+
+        # 训练成功，现在记录结果
         training_artifacts = {}
         if trainer.evaluation_results:
             saved_artifacts = trainer.evaluation_results.get("artifacts", {})
             training_artifacts.update(saved_artifacts)
 
-        # 为了 pipeline 记录文件的逻辑性，过滤掉 evaluation_results 中的 artifacts 字段
         evaluation_results = {
             key: value for key, value in trainer.evaluation_results.items() if key != "artifacts"
         }
 
-        pipeline_recorder.add_stage("model_training_evaluation",
-                                    "success" if trainer.evaluation_results and trainer.evaluation_results.get(
-                                        "test") else "failed",
+        pipeline_recorder.add_stage("model_training_evaluation", "success",
                                     {"training_log": trainer.training_log, "evaluation_metrics": evaluation_results},
                                     artifacts=training_artifacts)
 
-        if not trainer.evaluation_results or not trainer.evaluation_results.get("test"):
-            pipeline_recorder.set_final_status("failed")
-            return ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "success", "detail": "模型训练与评估完成。"}}
 
         # 7. 结果汇总
-        print("\n模块7: 结果汇总...")
+        current_stage = "结果汇总"
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "running", "detail": "正在汇总最终结果..."}}
+        print(f"\n模块7: {current_stage}...")
+
         pipeline_recorder.set_final_status("success")
         result_handler = ResultHandler(pipeline_summary=pipeline_recorder.get_pipeline_summary())
         result_handler.add_model_details(
@@ -346,36 +317,26 @@ def performanceModelBuilder(request_params: Dict[str, str]) -> Dict[str, Any]:
         )
         result_handler.add_evaluation_metrics(metrics=trainer.evaluation_results)
         result_handler.add_feature_importances(importances=trainer.feature_importances)
-        final_result_package = result_handler.compile_final_result()
         result_handler.save_final_result()
 
-        return final_result_package
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "success",
+                           "detail": "性能预报智能体的建模与初步评估流程成功完成。"}}
+        return
 
     except Exception as e:
-        print(f"AutoML流程执行过程中发生未捕获的严重错误: {e}")
         import traceback
-        traceback.print_exc()
+        error_msg = f"智能体在AutoML流程中发生严重错误: {e}"
+        print(error_msg)
+        print(traceback.format_exc())
+        yield {"type": "error",
+               "payload": {"stage": "全局错误", "message": error_msg, "details": traceback.format_exc()}}
 
         pipeline_recorder.add_stage("global_error_handler", "failed",
                                     {"error_type": type(e).__name__, "message": str(e),
                                      "traceback": traceback.format_exc()})
         pipeline_recorder.set_final_status("failed")
 
+        # 即使失败，编译并返回到目前为止的结果
         final_result_package = ResultHandler(pipeline_recorder.get_pipeline_summary()).compile_final_result()
-        if "status" not in final_result_package or final_result_package["status"] != "failed":
-            final_result_package["status"] = "failed"
-        if "error_details" not in final_result_package:
-            final_result_package["error_details"] = {"message": str(e), "type": type(e).__name__}
-
-        # 即使失败，也尝试保存最终的pipeline记录
-        if 'pipeline_summary' in final_result_package:
-            try:
-                summary_path = os.path.join(run_dir, "failed_pipeline_summary.json")
-                with open(summary_path, 'w', encoding='utf-8') as f:
-                    import json
-                    json.dump(final_result_package['pipeline_summary'], f, indent=4, ensure_ascii=False)
-                print(f"失败的pipeline摘要已保存至: {summary_path}")
-            except Exception as save_e:
-                print(f"保存失败的pipeline摘要时出错: {save_e}")
-
-        return final_result_package
+        return

@@ -41,7 +41,7 @@ def _generate_plot_filename(request_params: Dict[str, Any], model_name: str, tim
                             plot_type: str) -> str:
     """
     生成标准化的图表文件名。
-    命名逻辑: 目标性能_数据时间范围_牌号_机组_出钢记号_钢种_模型算法_当前时间_{dataset_name}_{plot_type}.png
+    命名逻辑: 目标性能_数据时间范围_牌号_机组_出钢记号_钢种_当前时间_模型算法_{dataset_name}_{plot_type}.png
     """
 
     def format_param(param_value: Any) -> str:
