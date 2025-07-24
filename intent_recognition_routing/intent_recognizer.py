@@ -135,7 +135,7 @@ unknown_intent"""
                 break
 
         if not intent or "Agent failed" in intent:
-            yield {"type": "error", "payload": {"stage": current_stage, "message": "意图分类失败", "details": intent}}
+            yield {"type": "error", "payload": {"stage": current_stage, "detail": "意图分类失败" + intent}}
             return
 
         # 步骤2: 根据意图进行路由处理
@@ -234,7 +234,7 @@ unknown_intent"""
 
             if "error" in extracted_info:
                 yield {"type": "error",
-                       "payload": {"stage": current_stage, "message": "相关关键信息提取失败", "details": extracted_info}}
+                       "payload": {"stage": current_stage, "detail": "相关关键信息提取失败" + str(extracted_info)}}
                 return
 
             yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
@@ -249,15 +249,15 @@ unknown_intent"""
             }
 
             if pre_result["target_metric"] == "未知指标":
-                yield {"type": "error", "payload": {"stage": current_stage, "message": "无法识别目标性能指标",
-                                                    "details": "请求中未明确指定有效的力学性能指标。"}}
+                yield {"type": "error", "payload": {"stage": current_stage,
+                                                    "detail": "无法识别目标性能指标，请求中未明确指定有效的力学性能指标。"}}
                 return
 
             kb = KnowledgeBaseService("professional_knowledge_kb")
             results = kb.search("目标性能指标字段映射对照列表。", k=1)
             if not results:
-                yield {"type": "error", "payload": {"stage": current_stage, "message": "知识库查询失败",
-                                                    "details": "无法获取目标性能指标的映射列表。"}}
+                yield {"type": "error", "payload": {"stage": current_stage,
+                                                    "detail": "知识库查询失败，无法获取目标性能指标的映射列表。"}}
                 return
 
             target_metrics_list = results[0]["metadata"]
@@ -296,11 +296,16 @@ unknown_intent"""
 
             if "error" in mapping_result or not mapping_result.get("matched", False):
                 yield {"type": "error",
-                       "payload": {"stage": current_stage, "message": "目标指标映射失败", "details": mapping_result}}
+                       "payload": {"stage": current_stage, "detail": "目标性能指标映射失败" + str(mapping_result)}}
                 return
 
             final_result = pre_result.copy()
             final_result["target_metric"] = mapping_result["field_code"]
+
+            if not final_result["target_metric"]:
+                yield {"type": "error", "payload": {"stage": current_stage,
+                                                    "detail": "智能体未能解析出性能目标字段，请重新确认相关性能指标后再试。"}}
+                return
 
             yield {"type": "status_update",
                    "payload": {"stage": current_stage, "status": "success", "detail": "意图识别和信息提取全部完成。"}}

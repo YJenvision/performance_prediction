@@ -64,10 +64,6 @@ def performanceModelBuilder(
     user_request = request_params.get("user_request", "用户具体请求描述为空。")
     target_metric = request_params.get("target_metric")
 
-    if not target_metric:
-        yield {"type": "error", "payload": {"stage": "初始化", "message": "缺少目标指标 (target_metric)。"}}
-        return
-
     pipeline_recorder = PipelineBuilder(user_request_details=request_params)
 
     try:
@@ -75,16 +71,9 @@ def performanceModelBuilder(
         current_stage = "数据获取"
         yield {"type": "status_update",
                "payload": {"stage": current_stage, "status": "running", "detail": "初始化数据加载器..."}}
+
         data_loader = DataLoader(db_config=DB_CONFIG)
-        # fetch_data_generator = data_loader.fetch_data(
-        #     sg_sign=request_params.get("sg_sign"),
-        #     target_metric=request_params.get("target_metric"),
-        #     time_range=request_params.get("time_range"),
-        #     product_unit_no=request_params.get("product_unit_no"),
-        #     st_no=request_params.get("st_no"),
-        #     steel_grade=request_params.get("steel_grade")
-        # )
-        fetch_data_generator = data_loader.fetch_data_from_excel(
+        fetch_data_generator = data_loader.fetch_data(
             sg_sign=request_params.get("sg_sign"),
             target_metric=request_params.get("target_metric"),
             time_range=request_params.get("time_range"),
@@ -92,6 +81,14 @@ def performanceModelBuilder(
             st_no=request_params.get("st_no"),
             steel_grade=request_params.get("steel_grade")
         )
+        # fetch_data_generator = data_loader.fetch_data_from_excel(
+        #     sg_sign=request_params.get("sg_sign"),
+        #     target_metric=request_params.get("target_metric"),
+        #     time_range=request_params.get("time_range"),
+        #     product_unit_no=request_params.get("product_unit_no"),
+        #     st_no=request_params.get("st_no"),
+        #     steel_grade=request_params.get("steel_grade")
+        # )
 
         returned_value, has_failed = yield from _consume_sub_generator(fetch_data_generator)
         if has_failed:
@@ -102,7 +99,7 @@ def performanceModelBuilder(
         if raw_data is None or raw_data.empty:
             error_detail = "未能获取到有效数据或数据集为空。"
             yield {"type": "error",
-                   "payload": {"stage": current_stage, "message": error_detail, "details": {"sql_query": sql_query}}}
+                   "payload": {"stage": current_stage, "detail": error_detail + "sql查询为：" + sql_query}}
             return
 
         _save_dataframe(raw_data, "原始数据集", filename_prefix, run_dir)
@@ -155,7 +152,7 @@ def performanceModelBuilder(
                                     artifacts=preproc_artifacts)
 
         if critical_preprocessing_failed:
-            yield {"type": "error", "payload": {"stage": current_stage, "message": "关键预处理步骤失败，流程中止。"}}
+            yield {"type": "error", "payload": {"stage": current_stage, "detail": "关键预处理步骤失败，流程中止。"}}
             pipeline_recorder.set_final_status("failed")
             return
 
@@ -204,14 +201,14 @@ def performanceModelBuilder(
                                     {"steps_details": fe_steps},
                                     artifacts=fe_artifacts)
         if critical_fe_failed:
-            yield {"type": "error", "payload": {"stage": current_stage, "message": "关键特征工程步骤失败，流程中止。"}}
+            yield {"type": "error", "payload": {"stage": current_stage, "detail": "关键特征工程步骤失败，流程中止。"}}
             pipeline_recorder.set_final_status("failed")
             return
 
         X = df_engineered.drop(columns=[target_metric], errors='ignore')
         y = df_engineered[target_metric]
         if X.empty:
-            yield {"type": "error", "payload": {"stage": current_stage, "message": "训练特征集为空，无法进行模型训练。"}}
+            yield {"type": "error", "payload": {"stage": current_stage, "detail": "训练特征集为空，无法进行模型训练。"}}
             return
         yield {"type": "status_update",
                "payload": {"stage": current_stage, "status": "success", "detail": "特征工程完成。"}}
@@ -246,7 +243,7 @@ def performanceModelBuilder(
             error_msg = "未能生成有效的模型算法计划。"
             pipeline_recorder.add_stage("model_selection_planning", "failed",
                                         {"log": model_selection_log, "error": error_msg})
-            yield {"type": "error", "payload": {"stage": current_stage, "message": error_msg}}
+            yield {"type": "error", "payload": {"stage": current_stage, "detail": error_msg}}
             return
 
         pipeline_recorder.add_stage("model_selection_planning", "success",
@@ -321,7 +318,7 @@ def performanceModelBuilder(
 
         yield {"type": "status_update",
                "payload": {"stage": current_stage, "status": "success",
-                           "detail": "性能预报智能体的建模与初步评估流程成功完成。"}}
+                           "detail": "性能预报智能体的建模与评估流程成功完成。"}}
         return
 
     except Exception as e:
@@ -330,7 +327,7 @@ def performanceModelBuilder(
         print(error_msg)
         print(traceback.format_exc())
         yield {"type": "error",
-               "payload": {"stage": "全局错误", "message": error_msg, "details": traceback.format_exc()}}
+               "payload": {"stage": "全局错误", "detail": error_msg + traceback.format_exc()}}
 
         pipeline_recorder.add_stage("global_error_handler", "failed",
                                     {"error_type": type(e).__name__, "message": str(e),

@@ -2,6 +2,7 @@ import json
 import uvicorn
 import asyncio
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Any, AsyncGenerator, Generator
@@ -11,7 +12,19 @@ from steel_automl.performance_model_builder import performanceModelBuilder
 
 app = FastAPI(
     title="Streaming AutoML Agent API",
-    description="一个用于回归任务的流式AutoML智能体API",
+    description="一个用于回归任务的流式钢铁产品力学性能预报智能体API",
+)
+
+origins = [
+    "*"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -97,4 +110,4 @@ async def automl_stream_endpoint(request: UserRequest):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8003)

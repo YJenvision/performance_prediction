@@ -131,7 +131,7 @@ class ModelTrainer:
             self.training_log.append(log_entry)
             error_msg = f"数据划分失败: {e}"
             yield {"type": "error",
-                   "payload": {"stage": self.current_stage, "message": error_msg, "details": traceback.format_exc()}}
+                   "payload": {"stage": self.current_stage, "detail": error_msg + traceback.format_exc()}}
             return False
 
         # 2. 模型训练与超参数优化
@@ -176,7 +176,7 @@ class ModelTrainer:
             # 打印回溯以进行服务器端调试
             traceback.print_exc()
             yield {"type": "error",
-                   "payload": {"stage": self.current_stage, "message": error_msg, "details": traceback.format_exc()}}
+                   "payload": {"stage": self.current_stage, "detail": error_msg + traceback.format_exc()}}
             return False
 
         # 3. 模型评估
@@ -202,7 +202,7 @@ class ModelTrainer:
             self.training_log.append({"step": "model_evaluation", "status": "failed", "error": str(e)})
             error_msg = f"模型 {self.model_name} 评估失败: {e}"
             yield {"type": "error",
-                   "payload": {"stage": self.current_stage, "message": error_msg, "details": traceback.format_exc()}}
+                   "payload": {"stage": self.current_stage, "detail": error_msg + traceback.format_exc()}}
             return False
 
         # 4. 特征重要性提取

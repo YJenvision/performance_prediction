@@ -87,7 +87,7 @@ class DataPreprocessor:
         # --- 步骤①: 删除常量列和全空列 ---
         detail = "正在检查并删除常量列和全空列..."
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running", "detail": detail}}
-        print(f"  {detail}")
+        print(f"{detail}")
         null_placeholders = [r'^\s*$', r'\(?null\)?', 'null', 'nan']
         for placeholder in null_placeholders:
             df_screened.replace(to_replace=placeholder, value=np.nan, regex=True, inplace=True)
@@ -112,14 +112,15 @@ class DataPreprocessor:
                 "details": "删除了常量列、几乎全为常量或全为空的列。",
                 "removed_columns": rule_based_removed_cols
             })
-            print(f"    移除了 {len(rule_based_removed_cols)} 个常量或空列: {rule_based_removed_cols}")
+            print(f"移除了 {len(rule_based_removed_cols)} 个常量或空列: {rule_based_removed_cols}")
+            yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running", "detail": f"移除了 {len(rule_based_removed_cols)} 个常量或空列: {rule_based_removed_cols}"}}
         else:
-            print("    未发现需要通过规则删除的常量或空列。")
+            print("未发现需要通过规则删除的常量或空列。")
 
         # --- 步骤② & ③: 基于领域知识和用户需求的特征删除 ---
         detail = "正在基于用户需求使用知识库进行特征筛选..."
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running", "detail": detail}}
-        print(f"  {detail}")
+        print(f"{detail}")
 
         # 动态精简知识库信息
         unsuitable_features_docs = self.domain_kb.search("经验意义上不适用作训练字段的特征列", k=1)
@@ -158,7 +159,7 @@ class DataPreprocessor:
                 llm_response_str = e.value
                 break
 
-        print(f"\n    智能体粗筛决策原始响应:\n{llm_response_str}")
+        print(f"\n智能体粗筛决策原始响应:\n{llm_response_str}")
 
         try:
             decision = json.loads(llm_response_str)
@@ -177,9 +178,10 @@ class DataPreprocessor:
                     "details": "基于领域知识和用户需求，删除了其他性能指标和不适用特征。",
                     "removed_columns": valid_cols_to_delete, "reasoning_source": "智能体基于领域经验知识的决策。"
                 })
-                print(f"    智能体决策移除了 {len(valid_cols_to_delete)} 个特征: {valid_cols_to_delete}")
+                print(f"智能体决策移除了 {len(valid_cols_to_delete)} 个特征: {valid_cols_to_delete}")
+                yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running", "detail": f"基于领域经验知识移除了 {len(valid_cols_to_delete)} 个特征: {valid_cols_to_delete}"}}
             else:
-                print("    智能体决策未建议删除任何特征。")
+                print("智能体决策未建议删除任何特征。")
                 steps_log.append({
                     "step": "特征粗筛-智能体基于领域经验知识的决策", "status": "no_action",
                     "details": "分析后未发现需要基于知识库删除的列。"
@@ -192,7 +194,7 @@ class DataPreprocessor:
                 "error": error_msg, "raw_response": llm_response_str
             })
             yield {"type": "error",
-                   "payload": {"stage": current_stage, "message": "智能体决策解析失败", "details": error_msg}}
+                   "payload": {"stage": current_stage, "detail": error_msg}}
 
         return df_screened, steps_log
 
@@ -343,7 +345,7 @@ class DataPreprocessor:
         # 目标列清洗
         detail = "预处理准备阶段: 清洗目标列..."
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running", "detail": detail}}
-        print(f"\n--- {detail} ---")
+        print(f"--- {detail} ---")
 
         initial_rows = len(df)
         df.dropna(subset=[self.target_metric], inplace=True)
@@ -366,14 +368,14 @@ class DataPreprocessor:
 
         if df.empty:
             error_msg = "清洗目标列后，数据集为空。预处理中止。"
-            yield {"type": "error", "payload": {"stage": current_stage, "message": error_msg, "details": ""}}
+            yield {"type": "error", "payload": {"stage": current_stage, "detail": error_msg}}
             self.applied_steps.append({"step": "目标列清洗", "status": "failed", "error": error_msg})
             return pd.DataFrame(), self.applied_steps, self.fitted_objects
 
         # --- 阶段一: 基于规则和知识的特征粗筛 ---
         detail = "预处理阶段一: 特征粗筛..."
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running", "detail": detail}}
-        print(f"\n--- {detail} ---")
+        print(f"--- {detail} ---")
 
         screening_gen = self._coarse_grained_feature_screening(df)
         df_screened, screening_steps = yield from screening_gen
@@ -382,7 +384,7 @@ class DataPreprocessor:
 
         if df_screened.empty or self.target_metric not in df_screened.columns:
             error_msg = "特征粗筛后数据为空或目标列被移除，预处理中止。"
-            yield {"type": "error", "payload": {"stage": current_stage, "message": error_msg, "details": ""}}
+            yield {"type": "error", "payload": {"stage": current_stage, "detail": error_msg}}
             self.applied_steps.append({"step": "特征粗筛", "status": "failed", "error": error_msg})
             return pd.DataFrame(), self.applied_steps, self.fitted_objects
 
@@ -393,7 +395,7 @@ class DataPreprocessor:
         # --- 阶段二: 对剩余特征进行详细预处理 ---
         detail = "预处理阶段二: 详细预处理..."
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running", "detail": detail}}
-        print(f"\n--- {detail} ---")
+        print(f"--- {detail} ---")
 
         columns_to_process = [col for col in df_screened.columns if col != self.target_metric]
         if not columns_to_process:
@@ -442,7 +444,7 @@ class DataPreprocessor:
                         {"step": "生成详细预处理计划", "status": "failed", "error": error_msg,
                          "raw_response": llm_response_str})
                     yield {"type": "error",
-                           "payload": {"stage": current_stage, "message": "智能体计划解析失败", "details": error_msg}}
+                           "payload": {"stage": current_stage, "detail": error_msg}}
                     return df_screened, self.applied_steps, self.fitted_objects
 
         detail = "正在执行详细预处理计划..."

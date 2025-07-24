@@ -190,7 +190,7 @@ class FeatureGenerator:
 
         # 1. LLM制定特征工程计划
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
-                                                    "detail": "智能体正在分析数据并制定特征工程计划..."}}
+                                                    "detail": "正在分析数据并制定特征工程计划..."}}
         system_prompt, user_prompt = self._generate_llm_prompt_for_fe_plan(current_features_str)
 
         llm_gen = call_llm(system_prompt, user_prompt)
@@ -226,8 +226,8 @@ class FeatureGenerator:
         except (json.JSONDecodeError, ValueError) as e:
             error_msg = f"生成的计划无效: {e}"
             print("特征方案原始响应：", llm_response_str)
-            yield {"type": "error", "payload": {"stage": current_stage, "message": "特征工程计划生成失败",
-                                                "details": error_msg}}
+            yield {"type": "error", "payload": {"stage": current_stage,
+                                                "detail": "特征工程计划生成失败" + error_msg}}
             self.applied_steps.append({
                 "step": "llm_generate_fe_plan", "status": "failed", "error": str(e), "raw_response": llm_response_str
             })

@@ -150,26 +150,38 @@ def call_llm(
         model: str = "ds_R1"
 ) -> Generator[Dict[str, Any], None, str]:
     """
-    一个生成器函数，它将思考过程逐字流式传输，并返回最终的非思考文本。对`call_llm_stream`的封装，实现了统一的输出格式。
+    一个生成器函数，它将思考过程按行或按块流式传输，并返回最终的非思考文本。
+    对`call_llm_stream`的封装，实现了统一的输出格式。
 
     :return: 一个生成器，用于生成思考流、错误，并最终返回收集到的响应字符串。
     """
     full_response_parts = []
     error_message = ""
+    think_buffer = ""  # 用于缓冲思考内容的缓冲区
 
     # 这是一个生成器，yield思考块
     for chunk in call_llm_stream(system_prompt, user_prompt, temperature, model):
         if "error" in chunk:
             error_message = chunk["error"]
             yield {"type": "error",
-                   "payload": {"stage": "智能体调用", "message": "智能体调用失败", "details": error_message}}
+                   "payload": {"stage": "智能体调用", "details": "智能体调用失败，" + error_message}}
             break
         elif "think_content" in chunk and chunk["think_content"]:
-            # 将获取到的思考内容逐字yield，实现流式效果
-            for char in chunk["think_content"]:
-                yield {"type": "thinking_stream", "payload": char}
+            # 将接收到的内容加入缓冲区
+            think_buffer += chunk["think_content"]
+
+            # 检查缓冲区中是否包含换行符，按行发送
+            while '\n' in think_buffer:
+                line, think_buffer = think_buffer.split('\n', 1)
+                # 发送包含换行符的完整行
+                yield {"type": "thinking_stream", "payload": line + '\n'}
+
         elif "text_content" in chunk:
             full_response_parts.append(chunk["text_content"])
+
+    # 循环结束后，如果缓冲区中还有剩余内容，将其全部发送
+    if think_buffer:
+        yield {"type": "thinking_stream", "payload": think_buffer}
 
     if error_message:
         return f"Agent failed: {error_message}"

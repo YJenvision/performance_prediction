@@ -140,8 +140,8 @@ class DataLoader:
         """
         current_stage = "数据获取"
         if not self._connect():
-            yield {"type": "error", "payload": {"stage": current_stage, "message": "数据库连接失败",
-                                                "details": "请检查网络连接或数据库配置。"}}
+            yield {"type": "error", "payload": {"stage": current_stage,
+                                                "detail": "数据库连接失败，请检查网络连接或数据库配置。"}}
             return None, None
 
         query = None
@@ -171,8 +171,8 @@ class DataLoader:
                     break
 
             if "AGENT_FAILED" in query:
-                yield {"type": "error", "payload": {"stage": current_stage, "message": "SQL查询生成失败",
-                                                    "details": "智能体未能成功生成SQL查询。"}}
+                yield {"type": "error", "payload": {"stage": current_stage,
+                                                    "detail": "智能体未能成功生成SQL查询。"}}
                 return None, None
 
             yield {"type": "status_update",
@@ -186,7 +186,7 @@ class DataLoader:
         except Exception as e:
             error_details = f"从数据库获取数据时发生错误: {e}"
             yield {"type": "error",
-                   "payload": {"stage": current_stage, "message": "数据获取失败", "details": error_details}}
+                   "payload": {"stage": current_stage, "detail": error_details}}
             print(error_details)
             return None, query
         finally:
@@ -214,5 +214,5 @@ class DataLoader:
         except Exception as e:
             error_details = f"从excel类型文件中获取数据时发生错误: {e}"
             yield {"type": "error",
-                   "payload": {"stage": current_stage, "message": "数据获取失败", "details": error_details}}
+                   "payload": {"stage": current_stage, "detail": error_details}}
             return None, query
