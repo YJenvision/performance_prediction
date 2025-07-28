@@ -20,9 +20,10 @@ MODEL_CLASSES = {
 
 class ModelTrainer:
     def __init__(self, selected_model_name: str, model_info: Dict[str, Any], hpo_config: Dict[str, Any],
-                 automl_plan: Dict[str, Any]):
+                 automl_plan: Dict[str, Any], run_specific_dir: str):
         """
         初始化模型训练器。
+        MODIFIED: 添加 run_specific_dir 参数
         """
         if selected_model_name not in MODEL_CLASSES:
             raise ValueError(f"不支持的模型: {selected_model_name}。")
@@ -36,6 +37,9 @@ class ModelTrainer:
         self.target_metric = self.request_params.get("target_metric", "Unknown Target")
         self.run_timestamp_str = datetime.now().strftime('%Y%m%d%H%M%S')
         self.current_stage = "模型训练与评估"
+
+        # MODIFIED: 保存专属运行目录路径
+        self.run_specific_dir = run_specific_dir
 
         self.model_instance = self.model_class(hyperparameters={})
         self.training_log: List[Dict[str, Any]] = []
@@ -76,22 +80,28 @@ class ModelTrainer:
         metrics, predictions = self.model_instance.evaluate(X_data, y_data, self.acceptable_error)
 
         if predictions is not None and self.acceptable_error and metrics is not None:
+            # 为可视化图表指定正确的输出目录
+            visualization_dir = os.path.join(self.run_specific_dir, "visualization")
+
             pred_vs_actual_path = plot_prediction_vs_actual(
                 y_true=y_data, y_pred=predictions, acceptable_error=self.acceptable_error,
                 target_metric=self.target_metric, model_name=self.model_name, dataset_name=dataset_name,
-                request_params=self.request_params, timestamp_str=self.run_timestamp_str
+                request_params=self.request_params, timestamp_str=self.run_timestamp_str,
+                output_dir=visualization_dir
             )
             metrics["prediction_plot_path"] = pred_vs_actual_path
 
             error_dist_path = plot_error_distribution(
                 y_true=y_data, y_pred=predictions, acceptable_error=self.acceptable_error,
                 target_metric=self.target_metric, model_name=self.model_name, dataset_name=dataset_name,
-                request_params=self.request_params, timestamp_str=self.run_timestamp_str
+                request_params=self.request_params, timestamp_str=self.run_timestamp_str,
+                output_dir=visualization_dir
             )
             metrics["error_distribution_plot_path"] = error_dist_path
 
         if dataset_name == "测试集" and predictions is not None:
-            data_dir = "automl_runs\\data"
+            # 使用 run_specific_dir 构建评估数据的保存路径
+            data_dir = os.path.join(self.run_specific_dir, "data")
             os.makedirs(data_dir, exist_ok=True)
             filename = f"{self._generate_artifact_base_filename()}_测试集数据评估结果.csv"
             filepath = os.path.join(data_dir, filename)
@@ -101,8 +111,6 @@ class ModelTrainer:
             results_df[f'predict_{self.target_metric}'] = predictions
             results_df.to_csv(filepath, index=False, encoding='utf-8-sig')
             self.evaluation_results["artifacts"]["test_data_with_predictions_path"] = filepath
-            # This print is for server-side logging, the status will be yielded
-            print(f"测试集评估数据已保存: {filepath}")
 
         return metrics, f"对 {dataset_name} 的评估和可视化完成。"
 
@@ -157,8 +165,9 @@ class ModelTrainer:
 
             self.training_log.append(train_log_entry)
 
-            # 模型训练成功后，保存模型
-            model_dir = "automl_runs\\models"
+            # 3. 模型训练成功后，保存模型
+            # 使用 run_specific_dir 构建模型的保存路径
+            model_dir = os.path.join(self.run_specific_dir, "models")
             os.makedirs(model_dir, exist_ok=True)
             filename = f"{self._generate_artifact_base_filename()}.pkl"
             filepath = os.path.join(model_dir, filename)

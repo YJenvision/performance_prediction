@@ -1,10 +1,10 @@
-# data_loader.py
 import pandas as pd
 import ibm_db
 import sqlalchemy
 from typing import Dict, Any, Optional, List, Tuple, Callable, Generator
 from datetime import datetime, timedelta
 from llm_utils import call_llm
+from prompts.prompt_manager import get_prompt
 
 
 def generate_sql_query(
@@ -18,12 +18,8 @@ def generate_sql_query(
     """
     动态生成SQL查询语句，现在是一个生成器。
     """
-    system_prompt = """你是一个专业的SQL生成助手，你的任务是根据提供的参数生成安全的SQL查询语句。请遵循以下规则：
-1. 只生成SELECT类型的查询语句，在任何情况下都坚决不允许生成任何修改数据库的语句（如INSERT、UPDATE、DELETE等）
-2. 不使用任何高级SQL特性，如存储过程、触发器等
-3. 不允许执行任何系统命令或访问系统表
-4. 返回的SQL语句必须是格式良好的，可以直接执行的
-5. 只返回生成的目标SQL语句，不要包含任何解释或注释"""
+    # 从配置文件中获取系统提示词
+    system_prompt = get_prompt('data_loader.generate_sql.system')
 
     user_prompt = f"""请生成一个SQL查询语句，从表 BGTAMAQA.T_ADS_FACT_PCDPF_INTEGRATION_INFO 中查询数据，要求如下：
 1. 查询所有列 (SELECT *)
@@ -47,7 +43,7 @@ def generate_sql_query(
         user_prompt += f"\n{condition_num}. 钢种条件：钢种代码通过 SUBSTR(SIGN_CODE, 5, 2) IN {format_in_clause(steel_grade)} 进行匹配"
 
     # 使用 yield from 流式传输并获取最终SQL
-    sql_query_gen = call_llm(system_prompt, user_prompt, model="ds_R1")
+    sql_query_gen = call_llm(system_prompt, user_prompt, model="ds_v3")
     sql_query = ""
     while True:
         try:
@@ -73,9 +69,6 @@ def generate_sql_query(
            ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE', 'EXEC', 'EXECUTE']):
         raise ValueError("生成的SQL语句包含不安全的关键字，已拒绝执行。")
 
-    yield {"type": "status_update",
-           "payload": {"stage": "数据获取", "status": "running", "detail": f"即将执行数据查询: {sql_query}"}}
-    print(f"Dynamically generated SQL query: {sql_query}")
     return sql_query
 
 
@@ -152,7 +145,7 @@ class DataLoader:
                 now = datetime.now()
                 end_time = now.strftime("%Y%m%d")
                 start_time = (now - timedelta(days=365)).strftime("%Y%m%d")
-                detail = f"智能体提供的时间范围格式无效，使用默认值: {start_time}-{end_time}"
+                detail = f"智能体提供的时间范围格式无效，使用默认值: {start_time}-{end_time}。"
                 yield {"type": "status_update",
                        "payload": {"stage": current_stage, "status": "running", "detail": detail}}
 
@@ -175,11 +168,23 @@ class DataLoader:
                                                     "detail": "智能体未能成功生成SQL查询。"}}
                 return None, None
 
+            yield {"type": "substage_result", "payload": {
+                "stage": current_stage,
+                "substage_title": "生成的SQL查询",
+                "data": query
+            }}
+
             yield {"type": "status_update",
                    "payload": {"stage": current_stage, "status": "running", "detail": "正在执行数据查询获取数据..."}}
 
             df = pd.read_sql(query, self.engine)
             df.columns = df.columns.str.upper()
+
+            yield {"type": "substage_result", "payload": {
+                "stage": current_stage,
+                "substage_title": "获取的数据概览",
+                "data": f"成功获取 {len(df)} 行, {len(df.columns)} 列数据。"
+            }}
 
             return df, query
 
@@ -208,6 +213,12 @@ class DataLoader:
 
             df = pd.read_excel(r"D:\Desktop\性能预报\湛江数据集\MIA0数据.xlsx")
             df.columns = df.columns.str.upper()
+
+            yield {"type": "substage_result", "payload": {
+                "stage": current_stage,
+                "substage_title": "数据概览",
+                "data": f"成功从Excel文件获取 {len(df)} 行, {len(df.columns)} 列数据。"
+            }}
 
             return df, query
 

@@ -11,14 +11,12 @@ import os
 
 
 class ResultHandler:
-    def __init__(self, pipeline_summary: Dict[str, Any]):
+    def __init__(self, pipeline_summary: Dict[str, Any], run_specific_dir: str):
         """
         初始化结果处理器。
-
-        参数:
-        - pipeline_summary: PipelineBuilder生成的Pipeline摘要。
         """
         self.pipeline_summary = pipeline_summary
+        self.run_specific_dir = run_specific_dir  # 保存专属运行目录
         self.final_model_info: Optional[Dict[str, Any]] = None
         self.evaluation_metrics: Optional[Dict[str, float]] = None
         self.feature_importances: Optional[pd.Series] = None
@@ -27,11 +25,6 @@ class ResultHandler:
     def add_model_details(self, model_name: str, best_hyperparams: Optional[Dict[str, Any]]):
         """
         添加最终选择和训练的模型的详细信息。
-
-        参数:
-        - model_name: 最终模型的名称。
-        - best_hyperparams: 模型训练后得到的最佳超参数。
-        - model_object_ref: 存储的实际模型对象的引用或路径 (可选)。
         """
         self.final_model_info = {
             "model_name": model_name,
@@ -41,30 +34,21 @@ class ResultHandler:
     def add_evaluation_metrics(self, metrics: Optional[Dict[str, float]]):
         """
         添加最终模型的评估指标。
-
-        参数:
-        - metrics: 包含评估指标 (如 MSE, R2) 的字典。
         """
         self.evaluation_metrics = metrics
 
     def add_feature_importances(self, importances: Optional[pd.Series]):
         """
         添加最终模型的特征重要性。
-
-        参数:
-        - importances: Pandas Series，索引为特征名，值为重要性分数。
         """
         self.feature_importances = importances
 
     def compile_final_result(self) -> Dict[str, Any]:
         """
         汇编所有结果信息。
-
-        返回:
-        - 一个包含所有关键结果的字典。
         """
         final_result_package = {
-            "status": self.overall_status,  # 最终执行状态
+            "status": self.overall_status,
             "user_request": self.pipeline_summary.get("user_request", {}),
             "pipeline_run_id": self.pipeline_summary.get("pipeline_id", "N/A"),
             "modeling_start_time": self.pipeline_summary.get("start_time"),
@@ -76,28 +60,22 @@ class ResultHandler:
                 10).to_dict() if self.feature_importances is not None and not self.feature_importances.empty else None,
             "pipeline_stages_summary": self.pipeline_summary.get("stages", [])
         }
-
-        # 清理掉值为None的键，使输出更简洁
         return {k: v for k, v in final_result_package.items() if v is not None}
 
     def save_final_result(self, filepath: Optional[str] = None) -> str:
         """
         将最终结果保存到JSON文件。
-
-        参数:
-        - filepath: 保存文件的路径。如果为None，则生成默认文件名。
-
-        返回:
-        - 实际保存的文件路径。
         """
         result_package = self.compile_final_result()
         if filepath is None:
-            # 获取祖父目录路径
-            results_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                                       "automl_runs//result_info")
+            # 构建结果文件的保存路径
+            results_dir = os.path.join(self.run_specific_dir, "result_info")
             os.makedirs(results_dir, exist_ok=True)
-            filepath = os.path.join(results_dir,
-                                    f"{result_package.get('pipeline_run_id', 'unknown_run')}.json")
+
+            # 使用 pipeline_run_id (即文件夹名) 来命名结果文件，确保关联性
+            run_id = result_package.get('pipeline_run_id', 'unknown_run')
+            filename = f"{run_id}_result_summary.json"
+            filepath = os.path.join(results_dir, filename)
 
         try:
             with open(filepath, 'w', encoding='utf-8') as f:

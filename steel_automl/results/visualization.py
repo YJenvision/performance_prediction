@@ -76,7 +76,7 @@ def plot_prediction_vs_actual(
         dataset_name: str,
         request_params: Dict[str, Any],
         timestamp_str: str,
-        output_dir: str = "automl_runs\\visualization"
+        output_dir: str
 ) -> str:
     """
     绘制真实值与预测值的对比散点图，并高亮显示在可接受误差范围内的点。
@@ -97,7 +97,7 @@ def plot_prediction_vs_actual(
             non_zero_mask = y_true != 0
             is_within_bounds = np.zeros_like(y_true, dtype=bool)
             is_within_bounds[non_zero_mask] = (abs_error[non_zero_mask] / y_true.loc[non_zero_mask]) <= (
-                        error_value / 100)
+                    error_value / 100)
             # 如果真实值为0，则只有预测值也为0才算在界内
             is_within_bounds[~non_zero_mask] = y_pred[~non_zero_mask] == 0
         error_str = f"±{error_value}%"
@@ -150,7 +150,6 @@ def plot_prediction_vs_actual(
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
     plt.close(fig)
 
-    print(f"预测值vs真实值图表已保存至: {filepath}")
     return filepath
 
 
@@ -163,7 +162,7 @@ def plot_error_distribution(
         dataset_name: str,
         request_params: Dict[str, Any],
         timestamp_str: str,
-        output_dir: str = "automl_runs/visualization"
+        output_dir: str
 ) -> str:
     """
     绘制预测误差的分布直方图。
@@ -219,5 +218,4 @@ def plot_error_distribution(
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
     plt.close(fig)
 
-    print(f"误差分布图表已保存至: {filepath}")
     return filepath

@@ -4,6 +4,7 @@ from typing import Dict, Any, Tuple, List, Generator
 from llm_utils import call_llm
 from knowledge_base.kb_service import KnowledgeBaseService
 from config import MODEL_SELECTION_KB_NAME, HISTORICAL_CASES_KB_NAME
+from prompts.prompt_manager import get_prompt
 
 
 class ModelSelector:
@@ -66,39 +67,18 @@ class ModelSelector:
         """
         使用智能体根据用户请求和配置文件确定可接受的误差范围，现在是一个生成器。
         """
-        system_prompt = f"""
-你是一位领域专家，任务是为机器学习回归模型的性能评估确定一个“可接受的误差范围”。
+        error_config_json = json.dumps(self.error_config, indent=2, ensure_ascii=False)
 
-**你的决策依据:**
-1.  **用户明确要求**: 如果用户的请求中明确提到了误差范围（例如，“误差要小于5%”，“精度在10以内”），你必须优先采用用户的要求，并设定来源为 "user_request"。
-2.  **配置文件**: 如果用户没有明确要求，请参考提供的配置文件中的默认设置。如果使用了默认配置，设定来源为 "config_default"。
+        system_prompt = get_prompt(
+            'selector.determine_acceptable_error.system',
+            error_config_json=error_config_json
+        )
+        user_prompt = get_prompt(
+            'selector.determine_acceptable_error.user',
+            user_request=self.user_request,
+            target_metric=self.target_metric
+        )
 
-**配置文件内容:**
-{json.dumps(self.error_config, indent=2, ensure_ascii=False)}
-
-**输出格式要求:**
-你必须严格按照以下JSON格式返回你的决策。JSON对象必须包含 "type", "value", 和 "source" 三个键。
-- "type": 必须是 "percentage" (百分比) 或 "value" (绝对数值) 中的一个。
-- "value": 必须是一个数字。
-- "source": 必须是 "user_request", "config_default" 中的一个。
-
-例如:
-{{
-  "type": "percentage",
-  "value": 5,
-  "source": "user_request"
-}}
-
-确保你的回复是且仅是一个合法的、不含任何额外解释性文本或代码块标记的JSON对象。
-"""
-        user_prompt = f"""
-请为以下任务确定可接受的误差范围。
-**用户原始请求:**
-{self.user_request}
-**目标性能指标:**
-{self.target_metric}
-请严格按照系统提示中要求的JSON格式输出你的决策。
-"""
         llm_gen = call_llm(system_prompt, user_prompt, model="ds_v3")
         llm_response_str = ""
         while True:
@@ -141,79 +121,30 @@ class ModelSelector:
 
     def _generate_llm_prompt(self, acceptable_error: Dict) -> Tuple[str, str]:
         """为生成完整的AutoML计划生成系统和用户提示词。"""
-        system_prompt = f"""
-你是一位资深的AutoML专家，任务是为给定的回归问题设计一个完整的、智能化的建模计划。
-你需要根据用户的原始请求、数据概况、已确定的可接受误差范围和知识库信息，决定数据划分策略、超参数优化(HPO)方法，并从系统支持的模型列表中推荐一个或多个适合的模型及其超参数搜索范围。
+        # Prepare JSON strings for injection into the prompt
+        available_models_json = json.dumps(self.available_models, indent=2, ensure_ascii=False)
+        available_hpo_methods_json = json.dumps(self.available_hpo_methods, indent=2, ensure_ascii=False)
+        acceptable_error_json = json.dumps(acceptable_error)
 
-**决策依据:**
-1.  **用户意图**: 用户的原始请求是最高优先级。
-    - 若用户强调“快速验证”、“要快”，应选择计算成本较低的策略，如 `RandomizedSearchCV` 并设置一个较小的迭代次数 `n_iter` (例如 20-35)。
-    - 若用户强调“精度”、“效果最好”，应选择更高效的 `RandomizedSearchCV` 或 `BayesianOptimization` 并设置一个较大的迭代次数 `n_iter` (例如 40-60)。
-    - 对于一般性请求，`BayesianOptimization` 是一个很好的平衡选择，`n_iter` 可以设为 (例如 30-40)。
-2.  **数据规模**:
-    - **数据划分 (`data_split_ratio`)**: 对于小样本量(如 < 500)，可以考虑较小的测试集比例(如0.15)以保留更多训练数据。对于大样本，0.2-0.3是常规选择。
-    - **HPO方法**: 对于特征多、样本量大的情况，`GridSearchCV` 几乎不可行。`RandomizedSearchCV` 和 `BayesianOptimization` 是实际的选择。
-3.  **模型与参数**: 推荐的超参数必须是数值型，并以范围形式给出。
+        system_prompt = get_prompt(
+            'selector.generate_automl_plan.system',
+            available_models_json=available_models_json,
+            available_hpo_methods_json=available_hpo_methods_json,
+            acceptable_error_json=acceptable_error_json
+        )
 
-**可用组件:**
-- **支持的模型:**
-{json.dumps(self.available_models, indent=2, ensure_ascii=False)}
-- **支持的HPO方法:**
-{json.dumps(self.available_hpo_methods, indent=2, ensure_ascii=False)}
-
-**输出格式要求:**
-你必须严格按照以下JSON格式返回你的完整计划。JSON对象必须包含 "model_plan" 和 "model_recommendations" 两个顶级键。 "model_plan" 中必须包含 `acceptable_error` 字段。
-
-{{
-  "model_plan": {{
-    "reason": "简要说明你制定此计划的总体理由，特别是HPO方法和迭代次数的选择依据。",
-    "acceptable_error": {json.dumps(acceptable_error)},
-    "data_split_ratio": <一个浮点数, e.g., 0.2>,
-    "hpo_config": {{
-      "method": "<从 'GridSearchCV', 'RandomizedSearchCV', 'BayesianOptimization' 中选择>",
-      "n_iter": <一个整数, 代表 'RandomizedSearchCV' 的 `n_iter` 或 'BayesianOptimization' 的 `n_trials`。默认值：快速=30, 常规=45, 精确=60。如果选择 'GridSearchCV', 此项为 null>,
-      "cv_folds": <一个整数, 交叉验证的折数, 默认为3>,
-      "scoring_metric": "<一个用于优化超参数的评估指标, e.g., 'neg_mean_squared_error'(MSE)、'neg_mean_absolute_error'(MAE)、'neg_root_mean_squared_error'(RMSE)、'r2'(R2)等评分指标字符串>"
-    }}
-  }},
-  "model_recommendations": {{
-    "模型名称": {{
-      "reason": "简要说明选择此模型的具体理由。",
-      "hyperparameter_suggestions": {{
-        "整数型参数": [<下界整数>, <上界整数>],
-        "浮点型参数": [<下界浮点数>, <上界浮点数>],
-        "对数分布的浮点型参数": [<下界浮点数>, <上界浮点数>, "log"]
-      }}
-    }}
-  }}
-}}
-
-**超参数范围说明:**
-- **整数型**: `["param_name": [min, max]]` -> 例如 `"n_estimators": [50, 200]`
-- **浮点型 (线性分布)**: `["param_name": [min, max]]` -> 例如 `"subsample": [0.7, 1.0]`
-- **浮点型 (对数分布)**: `["param_name": [min, max, "log"]]` -> 例如 `"learning_rate": [0.01, 0.2, "log"]`。这对于学习率等跨越数量级的参数特别有效。
-
-确保你的回复是且仅是一个合法的、不含任何额外解释性文本或代码块标记的JSON对象。
-"""
         kb_query_context = f"AutoML计划制定咨询：用户请求 '{self.user_request}', 目标 '{self.target_metric}', 样本数 {self.num_samples}, 特征数 {self.num_features}。"
         knowledge_snippets = self._get_knowledge_snippets(kb_query_context)
 
-        user_prompt = f"""
-请为以下回归任务制定一个完整的AutoML模型和超参数优化计划。
-
-**用户原始请求:**
-{self.user_request}
-
-**任务概况:**
-- 目标指标: {self.target_metric}
-- 样本数量: {self.num_samples}
-- 特征数量: {self.num_features}
-- 已确定的可接受误差: {acceptable_error}
-
-{knowledge_snippets}
-
-请严格按照系统提示中要求的JSON格式输出你的计划。
-"""
+        user_prompt = get_prompt(
+            'selector.generate_automl_plan.user',
+            user_request=self.user_request,
+            target_metric=self.target_metric,
+            num_samples=self.num_samples,
+            num_features=self.num_features,
+            acceptable_error=acceptable_error,
+            knowledge_snippets=knowledge_snippets
+        )
         return system_prompt, user_prompt
 
     def _get_default_plan(self, reason: str, acceptable_error: Dict) -> Dict[str, Any]:
@@ -239,7 +170,7 @@ class ModelSelector:
         """
         执行AutoML计划生成的主流程，现在是一个生成器。
         """
-        current_stage = "模型选择与HPO计划"
+        current_stage = "模型选择与计划制定"
         log = []
         final_plan = {}
 
@@ -261,10 +192,10 @@ class ModelSelector:
 
         # 步骤 2: 基于误差范围生成完整的建模计划
         yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "running", "detail": "正在制定模型选择与HPO计划..."}}
+               "payload": {"stage": current_stage, "status": "running", "detail": "正在制定算法模型与HPO计划..."}}
         system_prompt, user_prompt = self._generate_llm_prompt(acceptable_error)
 
-        llm_gen = call_llm(system_prompt, user_prompt)
+        llm_gen = call_llm(system_prompt, user_prompt, model="ds_v3")
         llm_response_str = ""
         agent_failed = False
         while True:

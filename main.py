@@ -15,9 +15,7 @@ app = FastAPI(
     description="一个用于回归任务的流式钢铁产品力学性能预报智能体API",
 )
 
-origins = [
-    "*"
-]
+origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -56,7 +54,7 @@ async def process_request_stream(user_query: str) -> AsyncGenerator[str, None]:
     它消费来自下层生成器的事件流，并做出逻辑决策。
     """
     # --- 阶段1: 意图识别 ---
-    intent_result_payload = None
+    intent_final_payload = None
     has_failed = False
 
     recognizer = SteelPerformanceIntentRecognizer()
@@ -71,13 +69,13 @@ async def process_request_stream(user_query: str) -> AsyncGenerator[str, None]:
         try:
             # 从SSE格式中解析出JSON数据
             chunk = json.loads(event_string.replace("data: ", "").strip())
+            payload = chunk.get("payload", {})
 
-            # 检查是否是最终结果，并捕获它
-            if chunk.get("type") == "intent_result":
-                intent_result_payload = chunk.get("payload")
+            if chunk.get("type") == "stage_completed":
+                if payload.get("stage") == "意图识别" and payload.get("status") == "success":
+                    intent_final_payload = payload.get("result")
 
             # 检查是否有失败信号
-            payload = chunk.get("payload", {})
             if chunk.get("type") == "error" or \
                     (chunk.get("type") == "status_update" and payload.get("status") == "failed"):
                 has_failed = True
@@ -86,13 +84,13 @@ async def process_request_stream(user_query: str) -> AsyncGenerator[str, None]:
             print(f"Warning: Could not decode JSON from event string: {event_string}")
 
     # 意图识别流程结束后，检查其结果
-    if has_failed or not intent_result_payload:
+    if has_failed or not intent_final_payload:
         # 如果失败或没有得到最终结果，则整个请求流程终止
         return
 
     # --- 阶段2: AutoML 建模  ---
-    if intent_result_payload.get("intent") == "model_building_evaluation_request":
-        automl_sync_generator = performanceModelBuilder(intent_result_payload)
+    if intent_final_payload.get("intent") == "model_building_evaluation_request":
+        automl_sync_generator = performanceModelBuilder(intent_final_payload)
         # 直接将AutoML流程的事件流转发给客户端
         async for event_string in stream_wrapper(automl_sync_generator):
             yield event_string

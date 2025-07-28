@@ -8,6 +8,7 @@ from config import FEATURE_ENGINEERING_KB_NAME
 from knowledge_base.kb_service import KnowledgeBaseService
 from llm_utils import call_llm
 from steel_automl.feature_engineering.methods import FEATURE_ENGINEERING_METHODS_MAP
+from prompts.prompt_manager import get_prompt
 
 
 class FeatureGenerator:
@@ -61,81 +62,15 @@ class FeatureGenerator:
         # 将知识片段格式化，以便LLM清晰地理解
         formatted_knowledge = json.dumps(knowledge_snippets, indent=2, ensure_ascii=False)
 
-        system_prompt = f"""
-你是一位世界顶级的材料科学数据科学家，尤其擅长为机器学习模型设计和创造具有深刻物理意义的特征。你的任务是基于用户需求、当前数据特征和领域知识库，为回归任务制定一个详细、可执行的特征工程计划。
-
-**决策依据:**
-1.  **领域知识优先**: 优先使用知识库中提供的公式和方法，这些是经过验证的领域经验。
-2.  **动态列名映射**: 你的核心任务之一是解决理论与现实的差距。知识库中的元素名（如 'C', 'Mn'）可能与数据集中的列名（如 'ELM_C', 'ELM_MN'）不完全一致。你必须利用知识库中提供的 `mapping_hints`参考 和你对所提供列名含义的理解，将公式中的 `elements` 准确映射到 `当前可用特征` 列表中的实际列名。如果某个元素在当前特征中找不到任何可能的匹配，你应该放弃使用需要该元素的公式，并在思考过程中说明原因。
-3.  **通用性方法**: 除了领域知识，你也可以使用通用的特征工程方法或根据用户的提示来新增特征，如创建多项式特征或比率特征，这样做需要给出理由（例如，探索特征间的非线性关系或相互作用）。
-4.  **用户优先级最高**: 对于用户明确的特征工程需求，你应该优先考虑这些需求。
-
-**可用的特征工程操作:**
-1.  `apply_knowledge_based_formula`: 应用知识库中的领域特定公式。这是首选操作。
-    - `params`:
-        - `formula_template`: str, 从知识库中获取的原始公式模板。
-        - `new_feature_name`: str, 从知识库中获取的新特征名称。
-        - `column_mapping`: Dict[str, str], 你完成的动态列名映射。Key是公式模板中的占位符（如 "C"），Value是数据集中实际的列名（如 "ELM_C"）。
-2.  `create_polynomial_features`: 创建多项式和交互特征。
-    - `params`:
-        - `columns`: List[str], 需要进行操作的原始数值列名列表。
-        - `degree`: int (可选, 默认为2)。
-3.  `create_ratio_features`: 创建两个数值列的比率特征。
-    - `params`:
-        - `numerator_col`: str, 分子列名。
-        - `denominator_col`: str, 分母列名。
-        - `new_col_name`: str, 新特征的名称。
-4.  `no_action`: 如果你认为现有特征已经足够，不需要任何新的特征工程。
-
-**输出格式要求:**
-你只能严格返回一个按照JSON格式的操作列表。每个操作是一个包含 'operation' 和 'params' 的字典。不要在JSON前后添加任何解释性文字或代码块标记。
-
-**示例JSON输出:**
-[
-  {{
-    "operation": "apply_knowledge_based_formula",
-    "params": {{
-      "formula_template": "{{C}} + {{Mn}}/6 + ({{Cr}}+{{Mo}}+{{V}})/5 + ({{Ni}}+{{Cu}})/15",
-      "new_feature_name": "CE",
-      "column_mapping": {{
-        "C": "ELM_C",
-        "Mn": "ELM_MN",
-        "Cr": "ELM_CR",
-        "Mo": "ELM_MO",
-        "V": "ELM_V",
-        "Ni": "ELM_NI",
-        "Cu": "ELM_CU"
-      }}
-    }}
-  }},
-  {{
-    "operation": "create_ratio_features",
-    "params": {{
-      "numerator_col": "process_param1",
-      "denominator_col": "process_param2",
-      "new_col_name": "param1_div_param2"
-    }}
-  }}
-]
-"""
-
-        user_prompt = f"""
-请为以下任务和数据制定一个特征工程计划。
-
-**用户原始请求**:
-"{self.user_request}"
-
-**目标预测指标**:
-"{self.target_metric}"
-
-**当前可用特征列表**:
-{current_features_str}
-
-**可供参考的领域知识库**:
-{formatted_knowledge}
-
-请仔细分析以上信息，特别是将知识库中的 `elements` 映射到 `当前可用特征列表`。然后，严格按照系统提示中的要求，输出你JSON列表格式的特征工程计划。
-"""
+        # 从配置文件加载提示词
+        system_prompt = get_prompt('feature_generator.generate_fe_plan.system')
+        user_prompt = get_prompt(
+            'feature_generator.generate_fe_plan.user',
+            user_request=self.user_request,
+            target_metric=self.target_metric,
+            current_features_str=current_features_str,
+            formatted_knowledge=formatted_knowledge
+        )
         return system_prompt, user_prompt
 
     def _execute_feature_engineering_plan(self, df: pd.DataFrame, plan: List[Dict[str, Any]]) -> pd.DataFrame:
@@ -193,7 +128,7 @@ class FeatureGenerator:
                                                     "detail": "正在分析数据并制定特征工程计划..."}}
         system_prompt, user_prompt = self._generate_llm_prompt_for_fe_plan(current_features_str)
 
-        llm_gen = call_llm(system_prompt, user_prompt)
+        llm_gen = call_llm(system_prompt, user_prompt, model="ds_v3")
         llm_response_str = ""
         while True:
             try:
