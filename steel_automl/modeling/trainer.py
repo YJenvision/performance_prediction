@@ -9,7 +9,7 @@ import traceback
 from config import DEFAULT_RANDOM_STATE
 from steel_automl.modeling.algorithms.random_forest import RandomForestModel
 from steel_automl.modeling.algorithms.xgboost_model import XGBoostModel
-from steel_automl.results.visualization import plot_prediction_vs_actual, plot_error_distribution
+from steel_automl.results.visualization import plot_prediction_vs_actual, plot_error_distribution, plot_value_distribution
 
 # 模型算法库中模型类映射表
 MODEL_CLASSES = {
@@ -86,6 +86,7 @@ class ModelTrainer:
         if predictions is not None and self.acceptable_error and metrics is not None:
             visualization_dir = os.path.join(self.run_specific_dir, "visualization")
 
+            # 绘制 预测值 vs 真实值 散点图
             pred_vs_actual_path = plot_prediction_vs_actual(
                 y_true=y_data, y_pred=predictions, acceptable_error=self.acceptable_error,
                 target_metric=self.target_metric, model_name=self.model_name, dataset_name=dataset_name,
@@ -94,6 +95,7 @@ class ModelTrainer:
             )
             metrics["prediction_plot_path"] = pred_vs_actual_path
 
+            # 绘制误差分布图
             error_dist_path = plot_error_distribution(
                 y_true=y_data, y_pred=predictions, acceptable_error=self.acceptable_error,
                 target_metric=self.target_metric, model_name=self.model_name, dataset_name=dataset_name,
@@ -101,6 +103,16 @@ class ModelTrainer:
                 output_dir=visualization_dir
             )
             metrics["error_distribution_plot_path"] = error_dist_path
+
+            # *** 新增：绘制真实值与预测值分布对比图 ***
+            value_dist_path = plot_value_distribution(
+                y_true=y_data, y_pred=predictions,
+                target_metric=self.target_metric, model_name=self.model_name, dataset_name=dataset_name,
+                request_params=self.request_params, timestamp_str=self.run_timestamp_str,
+                output_dir=visualization_dir
+            )
+            metrics["value_distribution_plot_path"] = value_dist_path
+
 
         if dataset_name == "测试集" and predictions is not None:
             data_dir = os.path.join(self.run_specific_dir, "data")

@@ -5,7 +5,6 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Union, Any
 
-
 def _set_plot_style(title: str, xlabel: str, ylabel: str, ax: plt.Axes):
     """设置图表的通用样式。"""
     # 中文字体设置，确保图表能正确显示中文
@@ -28,12 +27,13 @@ def _add_stats_textbox(ax: plt.Axes, text: str):
             verticalalignment='top', bbox=props)
 
 
-def _set_legend_style(ax: plt.Axes, loc: str = 'lower right'):
+def _set_legend_style(ax: plt.Axes, loc: str = 'best'):
     """设置图例的统一样式。"""
     legend = ax.legend(loc=loc, frameon=True, fancybox=True, shadow=True,
                        borderpad=1, fontsize=12)  # 统一图例字体大小
-    legend.get_frame().set_facecolor('white')
-    legend.get_frame().set_edgecolor('gray')
+    if legend:
+        legend.get_frame().set_facecolor('white')
+        legend.get_frame().set_edgecolor('gray')
     return legend
 
 
@@ -181,6 +181,7 @@ def plot_error_distribution(
     if error_type == 'percentage':
         xlabel = '预测百分比误差 (%)'
         title = f'{model_name} 在 {dataset_name} 上的预测百分比误差分布\n(目标: {target_metric})'
+        # 安全地计算百分比误差，避免除以零
         y_true_safe = y_true.replace(0, np.nan)
         percentage_error = ((y_pred - y_true) / y_true_safe * 100)
         plot_data = percentage_error.dropna().replace([np.inf, -np.inf], np.nan).dropna()
@@ -214,6 +215,62 @@ def plot_error_distribution(
 
     filename = _generate_plot_filename(request_params, model_name, timestamp_str, dataset_name,
                                        "error_distribution_plot")
+    filepath = os.path.join(output_dir, filename)
+    plt.savefig(filepath, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+    return filepath
+
+
+def plot_value_distribution(
+        y_true: pd.Series,
+        y_pred: np.ndarray,
+        target_metric: str,
+        model_name: str,
+        dataset_name: str,
+        request_params: Dict[str, Any],
+        timestamp_str: str,
+        output_dir: str
+) -> str:
+    """
+    绘制真实值与预测值的数值分布对比直方图。
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # --- 1. 计算统计数据 ---
+    stats_true = {
+        "N": len(y_true),
+    }
+    stats_pred = {
+        "N": len(y_pred),
+    }
+
+    # --- 2. 创建图例标签 ---
+    label_true = f"实际值 (样本数:{stats_true['N']}"
+    label_pred = f"预测值 (样本数:{stats_pred['N']}"
+
+    # --- 3. 自适应计算分箱 ---
+    # 合并数据以确定全局范围和最优分箱
+    combined_data = np.concatenate((y_true, y_pred))
+    # 使用 'auto' 策略，让 numpy 根据 Freedman-Diaconis rule 或 Sturges' formula 自动选择最佳分箱数
+    bins = np.histogram_bin_edges(combined_data, bins='auto')
+
+    # --- 4. 绘图 (移除边框: lw=0) ---
+    # 绘制真实值分布
+    sns.histplot(y_true, bins=bins, ax=ax, color="C0", label=label_true, alpha=0.7, kde=False, lw=0)
+    # 绘制预测值分布
+    sns.histplot(y_pred, bins=bins, ax=ax, color="C1", label=label_pred, alpha=0.6, kde=False, lw=0)
+
+    # --- 5. 设置图表样式 ---
+    title = f'{model_name} 在 {dataset_name} 上真实值与预测值分布对比\n(目标: {target_metric})'
+    _set_plot_style(title, f'{target_metric} 数值', '频数', ax)
+    _set_legend_style(ax, loc='upper right')
+
+    # --- 6. 保存文件 ---
+    filename = _generate_plot_filename(request_params, model_name, timestamp_str, dataset_name,
+                                       "value_distribution_plot")
     filepath = os.path.join(output_dir, filename)
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
     plt.close(fig)
