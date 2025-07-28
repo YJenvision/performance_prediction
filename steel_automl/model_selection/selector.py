@@ -167,17 +167,16 @@ class ModelSelector:
         }
 
     def select_model_and_plan(self) -> Generator[Dict[str, Any], None, Tuple[Dict[str, Any], List[Dict[str, Any]]]]:
-        """
-        执行AutoML计划生成的主流程，现在是一个生成器。
-        """
         current_stage = "模型选择与计划制定"
         log = []
         final_plan = {}
 
-        # 步骤 1: 确定可接受的误差范围
+        # 子任务 1: 确定可接受的误差范围
         yield {"type": "status_update",
                "payload": {"stage": current_stage, "status": "running", "detail": "正在确定可接受的误差范围..."}}
+
         error_gen = self._determine_acceptable_error()
+
         acceptable_error, error_log_msg = None, ""
         while True:
             try:
@@ -186,35 +185,51 @@ class ModelSelector:
             except StopIteration as e:
                 acceptable_error, error_log_msg = e.value
                 break
+
         log.append({"step": "determine_acceptable_error", "details": error_log_msg})
-        if acceptable_error is None:  # Error already yielded
+
+        if acceptable_error:
+            yield {"type": "substage_result", "payload": {
+                "stage": current_stage, "substage_title": "可接受误差分析",
+                "data": acceptable_error
+            }}
+        else:
+            # 如果确定误差失败，生成器内部已经yield了error, 这里直接返回后备计划
             return self._get_default_plan("无法确定误差范围", {}), log
 
-        # 步骤 2: 基于误差范围生成完整的建模计划
+        # 子任务 2: 基于误差范围生成完整的建模计划
         yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "running", "detail": "正在制定算法模型与HPO计划..."}}
+               "payload": {"stage": current_stage, "status": "running", "detail": "正在制定算法模型与模型超参数优化计划..."}}
         system_prompt, user_prompt = self._generate_llm_prompt(acceptable_error)
 
-        llm_gen = call_llm(system_prompt, user_prompt, model="ds_v3")
         llm_response_str = ""
         agent_failed = False
-        while True:
-            try:
-                chunk = next(llm_gen)
-                if chunk.get("type") == "error":
+        try:
+            llm_gen = call_llm(system_prompt, user_prompt, model="ds_v3")
+            agent_failed = False
+            while True:
+                try:
+                    chunk = next(llm_gen)
+                    if chunk.get("type") == "error":
+                        yield chunk
+                        agent_failed = True
+                        break
                     yield chunk
-                    agent_failed = True
+                except StopIteration as e:
+                    llm_response_str = e.value
                     break
-                yield chunk
-            except StopIteration as e:
-                llm_response_str = e.value
-                break
+        except Exception as e:
+            yield {"type": "error", "payload": {"stage": current_stage, "detail": f"制定计划时智能体调用异常: {e}"}}
+            agent_failed = True
 
         if agent_failed or "Agent failed" in llm_response_str:
             error_msg = "智能体在生成计划时失败。"
             log.append({"step": "llm_generate_plan", "status": "failed", "error": error_msg})
             final_plan = self._get_default_plan(error_msg, acceptable_error)
             log.append({"step": "fallback_plan_activated", "status": "success"})
+            yield {"type": "substage_result",
+                   "payload": {"stage": current_stage, "substage_title": "模型与HPO推荐计划 (后备)",
+                               "data": final_plan}}
             return final_plan, log
 
         try:
@@ -234,11 +249,16 @@ class ModelSelector:
             final_plan = {"model_plan": parsed_response["model_plan"], "model_recommendations": valid_recommendations}
             final_plan["model_plan"]["acceptable_error"] = acceptable_error
             log.append({"step": "llm_generate_plan", "status": "success", "plan": final_plan})
+            yield {"type": "substage_result",
+                   "payload": {"stage": current_stage, "substage_title": "模型与HPO推荐计划", "data": final_plan}}
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             error_msg = f"智能体解析或验证响应失败: {e}"
             log.append(
                 {"step": "llm_generate_plan", "status": "failed", "error": error_msg, "raw_response": llm_response_str})
             final_plan = self._get_default_plan(error_msg, acceptable_error)
             log.append({"step": "fallback_plan_activated", "status": "success"})
+            yield {"type": "substage_result",
+                   "payload": {"stage": current_stage, "substage_title": "模型与HPO推荐计划 (后备)",
+                               "data": final_plan}}
 
         return final_plan, log

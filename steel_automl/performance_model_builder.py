@@ -191,8 +191,7 @@ def performanceModelBuilder(
                                              preprocessed_columns=preprocessed_feature_cols)
 
         fe_generator = feature_generator.generate_features(df_processed.copy())
-        returned_value, has_failed = yield from _consume_sub_generator(
-            feature_generator.generate_features(df_processed.copy()))
+        returned_value, has_failed = yield from _consume_sub_generator(fe_generator)
 
         if has_failed:
             pipeline_recorder.add_stage(current_stage, "failed", {"details": "特征工程流程因错误中断。"})
@@ -212,31 +211,21 @@ def performanceModelBuilder(
         if saved_fe_path:
             fe_artifacts["fitted_feature_generators_path"] = saved_fe_path
 
-        critical_fe_failed = False
         if df_engineered.empty and not df_processed.empty:
-            critical_fe_failed = True
-        llm_fe_plan_failed = any(
-            step.get("step") == "llm_generate_fe_plan" and step.get("status") == "failed" for step in fe_steps)
-        if llm_fe_plan_failed:
-            critical_fe_failed = True
-            print("错误: 智能体未能成功生成特征工程计划。")
-
-        pipeline_recorder.add_stage(current_stage,
-                                    "failed" if critical_fe_failed else "success",
-                                    {"steps_details": fe_steps},
-                                    artifacts=fe_artifacts)
-        if critical_fe_failed:
-            yield {"type": "error", "payload": {"stage": current_stage, "detail": "关键特征工程步骤失败，流程中止。"}}
-            pipeline_recorder.set_final_status("failed")
+            yield {"type": "error", "payload": {"stage": current_stage, "detail": "特征工程后数据集为空，流程中止。"}}
             return
+        pipeline_recorder.add_stage(current_stage, "success", {"steps_details": fe_steps}, artifacts=fe_artifacts)
 
         X = df_engineered.drop(columns=[target_metric], errors='ignore')
         y = df_engineered[target_metric]
+
         if X.empty:
             yield {"type": "error", "payload": {"stage": current_stage, "detail": "训练特征集为空，无法进行模型训练。"}}
             return
-        yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "success", "detail": "特征工程完成。"}}
+        yield {"type": "stage_completed", "payload": {"stage": current_stage, "status": "success",
+                                                      "result": {"rows": len(df_engineered),
+                                                                 "columns": len(df_engineered.columns),
+                                                                 "steps_summary": fe_steps}}}
 
         # 4. 模型选择与计划制定
         current_stage = "模型选择与计划制定"
@@ -273,8 +262,8 @@ def performanceModelBuilder(
 
         pipeline_recorder.add_stage("model_selection_planning", "success",
                                     {"model_plan": automl_plan, "log": model_selection_log})
-        yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "success", "detail": "模型选择与计划制定完成。"}}
+        yield {"type": "stage_completed",
+               "payload": {"stage": current_stage, "status": "success", "result": {"automl_plan": automl_plan}}}
 
         # 5. Pipeline构建
         plan_details = automl_plan["model_plan"]
@@ -292,7 +281,7 @@ def performanceModelBuilder(
         current_stage = "模型训练与评估"
         yield {"type": "status_update",
                "payload": {"stage": current_stage, "status": "running",
-                           "detail": f"开始训练模型: {chosen_model_name}..."}}
+                           "detail": f"开始进行模型的训练与评估: {chosen_model_name}..."}}
 
         trainer = ModelTrainer(selected_model_name=chosen_model_name, model_info=chosen_model_info,
                                hpo_config=hpo_config, automl_plan=automl_plan, run_specific_dir=run_specific_dir)
@@ -322,14 +311,13 @@ def performanceModelBuilder(
                                     {"training_log": trainer.training_log, "evaluation_metrics": evaluation_results},
                                     artifacts=training_artifacts)
 
-        yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "success", "detail": "模型训练与评估完成。"}}
+        yield {"type": "stage_completed",
+               "payload": {"stage": current_stage, "status": "success", "result": evaluation_results}}
 
         # 7. 结果汇总
         current_stage = "结果汇总"
         yield {"type": "status_update",
                "payload": {"stage": current_stage, "status": "running", "detail": "正在汇总最终结果..."}}
-        print(f"\n模块7: {current_stage}...")
 
         pipeline_recorder.set_final_status("success")
         result_handler = ResultHandler(pipeline_summary=pipeline_recorder.get_pipeline_summary(),
@@ -342,9 +330,8 @@ def performanceModelBuilder(
         result_handler.add_feature_importances(importances=trainer.feature_importances)
         result_handler.save_final_result()
 
-        yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "success",
-                           "detail": "性能预报智能体的建模与评估流程成功完成。"}}
+        yield {"type": "stage_completed", "payload": {"stage": current_stage, "status": "success",
+                                                      "detail": "性能预报智能体的建模与评估流程成功完成。"}}
         return
 
     except Exception as e:
