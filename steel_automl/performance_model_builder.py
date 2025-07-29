@@ -14,7 +14,7 @@ from steel_automl.data_acquisition.data_loader import DataLoader
 from steel_automl.data_preprocessing.preprocessor import DataPreprocessor
 from steel_automl.feature_engineering.feature_generator import FeatureGenerator
 from steel_automl.model_selection.selector import ModelSelector
-from steel_automl.modeling.trainer import ModelTrainer
+from steel_automl.modeling.trainer_evaluator import ModelTrainer
 from steel_automl.performance_model_builder_utils import _generate_filename_prefix, _save_dataframe, \
     _save_fitted_objects
 from steel_automl.pipeline.pipeline_builder import PipelineBuilder

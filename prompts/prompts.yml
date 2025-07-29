@@ -379,7 +379,7 @@ selector:
           - 对于一般性请求，`BayesianOptimization` 是一个很好的平衡选择，`n_iter` 可以设为 (例如 30-40)。
       2.  **数据规模**:
           - **数据划分 (`data_split_ratio`)**: 对于小样本量(如 < 500)，可以考虑较小的测试集比例(如0.15)以保留更多训练数据。对于大样本，0.2-0.3是常规选择。
-          - **HPO方法**: 对于特征多、样本量大的情况，`GridSearchCV` 几乎不可行。`RandomizedSearchCV` 和 `BayesianOptimization` 是实际的选择。
+          - **HPO方法**: 对于特征多、样本量大的情况，`GridSearchCV` 几乎不可行。`RandomizedSearchCV` 和 `BayesianOptimization` 是更实际的选择。
       3.  **模型与参数**: 推荐的超参数必须是数值型，并以范围形式给出。
 
       ## 可用组件

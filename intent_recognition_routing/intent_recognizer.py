@@ -73,7 +73,7 @@ class SteelPerformanceIntentRecognizer:
                 break
 
         if not intent or "Agent failed" in intent:
-            yield {"type": "error", "payload": {"stage": current_stage, "detail": "意图分类失败" + intent}}
+            yield {"type": "error", "payload": {"stage": current_stage, "detail": f"意图分类失败: {intent}"}}
             return
 
         # 步骤2: 根据意图进行路由处理
@@ -111,7 +111,8 @@ class SteelPerformanceIntentRecognizer:
 
             if "error" in extracted_info:
                 yield {"type": "error",
-                       "payload": {"stage": current_stage, "detail": "相关关键信息提取失败" + str(extracted_info)}}
+                       "payload": {"stage": current_stage,
+                                   "detail": "相关关键信息提取失败，错误信息：" + str(extracted_info)}}
                 return
 
             print("意图识别：提取相关关键信息：", extracted_info)

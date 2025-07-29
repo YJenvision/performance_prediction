@@ -104,7 +104,7 @@ class ModelTrainer:
             )
             metrics["error_distribution_plot_path"] = error_dist_path
 
-            # *** 新增：绘制真实值与预测值分布对比图 ***
+            # 绘制真实值与预测值分布对比图
             value_dist_path = plot_value_distribution(
                 y_true=y_data, y_pred=predictions,
                 target_metric=self.target_metric, model_name=self.model_name, dataset_name=dataset_name,
