@@ -1,9 +1,15 @@
+# @Time    : 2025/7/29 09:16
+# @Author  : ZhangJingLiang
+# @Email   : jinglianglink@qq.com
+# @Project : performance_prediction_agent_stream
+
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import numpy as np
 from typing import Dict, Union, Any
+
 
 def _set_plot_style(title: str, xlabel: str, ylabel: str, ax: plt.Axes):
     """设置图表的通用样式。"""
@@ -81,7 +87,9 @@ def plot_prediction_vs_actual(
     """
     绘制真实值与预测值的对比散点图，并高亮显示在可接受误差范围内的点。
     """
-    os.makedirs(output_dir, exist_ok=True)
+    # 创建特定类型的子文件夹
+    plot_specific_dir = os.path.join(output_dir, "prediction_vs_actual")
+    os.makedirs(plot_specific_dir, exist_ok=True)
 
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, ax = plt.subplots(figsize=(12, 10))
@@ -146,7 +154,8 @@ def plot_prediction_vs_actual(
 
     filename = _generate_plot_filename(request_params, model_name, timestamp_str, dataset_name,
                                        "prediction_vs_actual_plot")
-    filepath = os.path.join(output_dir, filename)
+    # 使用新的子文件夹路径保存文件
+    filepath = os.path.join(plot_specific_dir, filename)
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
     plt.close(fig)
 
@@ -168,7 +177,9 @@ def plot_error_distribution(
     绘制预测误差的分布直方图。
     智能切换：如果误差类型是'percentage'，则绘制百分比误差分布；否则绘制绝对误差分布。
     """
-    os.makedirs(output_dir, exist_ok=True)
+    # 创建特定类型的子文件夹
+    plot_specific_dir = os.path.join(output_dir, "error_distribution")
+    os.makedirs(plot_specific_dir, exist_ok=True)
 
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -215,7 +226,8 @@ def plot_error_distribution(
 
     filename = _generate_plot_filename(request_params, model_name, timestamp_str, dataset_name,
                                        "error_distribution_plot")
-    filepath = os.path.join(output_dir, filename)
+    # 使用新的子文件夹路径保存文件
+    filepath = os.path.join(plot_specific_dir, filename)
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
     plt.close(fig)
 
@@ -235,7 +247,10 @@ def plot_value_distribution(
     """
     绘制真实值与预测值的数值分布对比直方图。
     """
-    os.makedirs(output_dir, exist_ok=True)
+    # 创建特定类型的子文件夹
+    plot_specific_dir = os.path.join(output_dir, "value_distribution")
+    os.makedirs(plot_specific_dir, exist_ok=True)
+
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, ax = plt.subplots(figsize=(12, 8))
 
@@ -248,8 +263,8 @@ def plot_value_distribution(
     }
 
     # --- 2. 创建图例标签 ---
-    label_true = f"实际值 (样本数:{stats_true['N']}"
-    label_pred = f"预测值 (样本数:{stats_pred['N']}"
+    label_true = f"实际值 (样本数:{stats_true['N']})"
+    label_pred = f"预测值 (样本数:{stats_pred['N']})"
 
     # --- 3. 自适应计算分箱 ---
     # 合并数据以确定全局范围和最优分箱
@@ -271,7 +286,8 @@ def plot_value_distribution(
     # --- 6. 保存文件 ---
     filename = _generate_plot_filename(request_params, model_name, timestamp_str, dataset_name,
                                        "value_distribution_plot")
-    filepath = os.path.join(output_dir, filename)
+    # 使用新的子文件夹路径保存文件 ---
+    filepath = os.path.join(plot_specific_dir, filename)
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
     plt.close(fig)
 

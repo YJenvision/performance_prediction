@@ -228,7 +228,7 @@ class ModelSelector:
             final_plan = self._get_default_plan(error_msg, acceptable_error)
             log.append({"step": "fallback_plan_activated", "status": "success"})
             yield {"type": "substage_result",
-                   "payload": {"stage": current_stage, "substage_title": "模型与HPO推荐计划 (后备)",
+                   "payload": {"stage": current_stage, "substage_title": "模型与模型超参数优化推荐计划 (后备)",
                                "data": final_plan}}
             return final_plan, log
 
@@ -250,7 +250,7 @@ class ModelSelector:
             final_plan["model_plan"]["acceptable_error"] = acceptable_error
             log.append({"step": "llm_generate_plan", "status": "success", "plan": final_plan})
             yield {"type": "substage_result",
-                   "payload": {"stage": current_stage, "substage_title": "模型与HPO推荐计划", "data": final_plan}}
+                   "payload": {"stage": current_stage, "substage_title": "算法模型与模型超参数优化计划", "data": final_plan}}
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             error_msg = f"智能体解析或验证响应失败: {e}"
             log.append(
@@ -258,7 +258,7 @@ class ModelSelector:
             final_plan = self._get_default_plan(error_msg, acceptable_error)
             log.append({"step": "fallback_plan_activated", "status": "success"})
             yield {"type": "substage_result",
-                   "payload": {"stage": current_stage, "substage_title": "模型与HPO推荐计划 (后备)",
+                   "payload": {"stage": current_stage, "substage_title": "算法模型与模型超参数优化计划 (后备)",
                                "data": final_plan}}
 
         return final_plan, log

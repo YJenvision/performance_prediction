@@ -82,17 +82,7 @@ def performanceModelBuilder(
         data_loader = DataLoader(db_config=DB_CONFIG)
 
         # 连接数据库，从数据库中加载数据。
-        # fetch_data_generator = data_loader.fetch_data(
-        #     sg_sign=request_params.get("sg_sign"),
-        #     target_metric=request_params.get("target_metric"),
-        #     time_range=request_params.get("time_range"),
-        #     product_unit_no=request_params.get("product_unit_no"),
-        #     st_no=request_params.get("st_no"),
-        #     steel_grade=request_params.get("steel_grade")
-        # )
-
-        # 不从数据库加载，从指定excel中加载数据。
-        fetch_data_generator = data_loader.fetch_data_from_excel(
+        fetch_data_generator = data_loader.fetch_data(
             sg_sign=request_params.get("sg_sign"),
             target_metric=request_params.get("target_metric"),
             time_range=request_params.get("time_range"),
@@ -100,6 +90,16 @@ def performanceModelBuilder(
             st_no=request_params.get("st_no"),
             steel_grade=request_params.get("steel_grade")
         )
+
+        # 不从数据库加载，从指定excel中加载数据。
+        # fetch_data_generator = data_loader.fetch_data_from_excel(
+        #     sg_sign=request_params.get("sg_sign"),
+        #     target_metric=request_params.get("target_metric"),
+        #     time_range=request_params.get("time_range"),
+        #     product_unit_no=request_params.get("product_unit_no"),
+        #     st_no=request_params.get("st_no"),
+        #     steel_grade=request_params.get("steel_grade")
+        # )
 
         returned_value, has_failed = yield from _consume_sub_generator(fetch_data_generator)
         if has_failed:
@@ -110,13 +110,13 @@ def performanceModelBuilder(
         if raw_data is None or raw_data.empty:
             error_detail = "未能获取到有效数据或数据集为空。"
             yield {"type": "error",
-                   "payload": {"stage": current_stage, "detail": error_detail + "sql查询为：" + sql_query}}
+                   "payload": {"stage": current_stage, "detail": error_detail + "查询条件为：" + sql_query}}
             return
 
         if target_metric not in raw_data.columns:
             error_detail = f"获取的数据中不包含目标性能字段 '{target_metric}'。"
             yield {"type": "error",
-                   "payload": {"stage": current_stage, "detail": error_detail + "sql查询为：" + sql_query}}
+                   "payload": {"stage": current_stage, "detail": error_detail + "查询条件为：" + sql_query}}
             return
 
         # 传入本次运行的专属文件夹路径
