@@ -148,7 +148,7 @@ class FeatureGenerator:
         # 子任务 1: 制定特征工程计划
         yield {"type": "status_update", "payload": {
             "stage": current_stage, "status": "running",
-            "detail": "正在分析数据并制定特征工程计划..."
+            "detail": "正在分析数据并制定特征构造计划..."
         }}
         system_prompt, user_prompt = self._generate_llm_prompt_for_fe_plan(current_features_str)
 
@@ -169,7 +169,7 @@ class FeatureGenerator:
 
         if "Agent failed" in llm_response_str:
             yield {"type": "error",
-                   "payload": {"stage": current_stage, "detail": "特征工程计划制定失败：智能体返回错误。"}}
+                   "payload": {"stage": current_stage, "detail": "特征构造计划制定失败：智能体返回错误。"}}
             self.applied_steps.append({"step": "llm_generate_fe_plan", "status": "failed", "error": "智能体调用失败",
                                        "raw_response": llm_response_str})
             return df, self.applied_steps, self.fitted_objects
@@ -183,17 +183,17 @@ class FeatureGenerator:
             self.applied_steps.append(
                 {"step": "llm_generate_fe_plan", "status": "success", "plan": feature_engineering_plan})
             yield {"type": "substage_result", "payload": {
-                "stage": current_stage, "substage_title": "特征工程计划",
+                "stage": current_stage, "substage_title": "特征构造计划",
                 "data": feature_engineering_plan
             }}
         except (json.JSONDecodeError, ValueError) as e:
             error_msg = f"生成的计划无效: {e}"
-            yield {"type": "error", "payload": {"stage": current_stage, "detail": "特征工程计划生成失败：" + error_msg}}
+            yield {"type": "error", "payload": {"stage": current_stage, "detail": "特征构造计划生成失败：" + error_msg}}
             self.applied_steps.append(
                 {"step": "llm_generate_fe_plan", "status": "failed", "error": str(e), "raw_response": llm_response_str})
             return df, self.applied_steps, self.fitted_objects
 
-        # 子任务 2: 执行特征工程计划
+        # 子任务 2: 执行特征构造计划
         if not feature_engineering_plan or (
                 len(feature_engineering_plan) == 1 and feature_engineering_plan[0].get("operation") == "no_action"):
             yield {"type": "substage_result", "payload": {
@@ -203,7 +203,7 @@ class FeatureGenerator:
         else:
             yield {"type": "status_update", "payload": {
                 "stage": current_stage, "status": "running",
-                "detail": "正在执行特征工程计划..."
+                "detail": "正在执行特征构造计划..."
             }}
             execution_generator = self._execute_feature_engineering_plan(df, feature_engineering_plan)
             df = yield from execution_generator

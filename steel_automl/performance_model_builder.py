@@ -74,8 +74,8 @@ def performanceModelBuilder(
     pipeline_recorder = PipelineBuilder(user_request_details=request_params)
 
     try:
-        # 1. 数据获取
-        current_stage = "数据获取"
+        # 1. 数据收集
+        current_stage = "数据收集"
         yield {"type": "status_update",
                "payload": {"stage": current_stage, "status": "running", "detail": "初始化数据加载器..."}}
 
@@ -129,19 +129,19 @@ def performanceModelBuilder(
             "result": {"rows": len(raw_data), "columns": len(raw_data.columns), "sql_query": sql_query}
         }}
 
-        # 2. 数据预处理
-        current_stage = "数据预处理"
+        # 2. 数据探索与预处理
+        current_stage = "数据探索与预处理"
         yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "running", "detail": "开始数据预处理..."}}
+               "payload": {"stage": current_stage, "status": "running", "detail": "开始数据探索与预处理..."}}
 
         preprocessor = DataPreprocessor(user_request=user_request, target_metric=target_metric)
         preprocess_generator = preprocessor.preprocess_data(raw_data.copy())
 
-        # 使用辅助函数消费数据预处理生成器
+        # 使用辅助函数消费数据探索与预处理生成器
         returned_value, has_failed = yield from _consume_sub_generator(preprocess_generator)
 
         if has_failed:
-            pipeline_recorder.add_stage(current_stage, "failed", {"details": "数据预处理流程因错误中断。"})
+            pipeline_recorder.add_stage(current_stage, "failed", {"details": "数据探索与预处理流程因错误中断。"})
             pipeline_recorder.set_final_status("failed")
             return
 

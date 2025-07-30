@@ -131,7 +131,7 @@ class DataLoader:
         """
         从数据库获取数据，现在是一个生成器。
         """
-        current_stage = "数据获取"
+        current_stage = "数据收集"
         if not self._connect():
             yield {"type": "error", "payload": {"stage": current_stage,
                                                 "detail": "数据库连接失败，请检查网络连接或数据库配置。"}}
@@ -204,7 +204,7 @@ class DataLoader:
         """
         从数据库获取数据，现在是一个生成器。
         """
-        current_stage = "数据获取"
+        current_stage = "数据收集"
         query = "excel文件中获取数据"
         try:
             yield {"type": "status_update",

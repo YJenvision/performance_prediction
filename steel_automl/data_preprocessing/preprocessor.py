@@ -20,7 +20,7 @@ from prompts.prompt_manager import get_prompt
 class DataPreprocessor:
     def __init__(self, user_request: str, target_metric: str):
         """
-        初始化数据预处理器。
+        初始化数据探索与预处理器。
         """
         self.user_request = user_request
         self.target_metric = target_metric
@@ -64,7 +64,7 @@ class DataPreprocessor:
         """执行基于规则和知识的特征粗筛, 现在是一个生成器。"""
         steps_log = []
         df_screened = df.copy()
-        current_stage = "数据预处理"
+        current_stage = "数据探索与预处理"
 
         # 子任务1: 删除常量列和全空列
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
@@ -267,10 +267,10 @@ class DataPreprocessor:
 
     def preprocess_data(self, df: pd.DataFrame) -> Generator[
         Dict[str, Any], None, Tuple[pd.DataFrame, List[Dict[str, Any]], Dict[str, Any]]]:
-        """数据预处理主流程，现在是一个生成器。"""
+        """数据探索与预处理主流程，现在是一个生成器。"""
         self.applied_steps = []
         self.fitted_objects = {}
-        current_stage = "数据预处理"
+        current_stage = "数据探索与预处理"
 
         # 阶段1: 目标列清洗
         yield {"type": "status_update",
@@ -388,5 +388,4 @@ class DataPreprocessor:
             self.applied_steps.append(
                 {"step": "最终清理预处理后变成常量的列", "status": "success", "removed_columns": final_cols_to_drop})
 
-        print("--- 数据预处理完成 ---")
         return df_processed, self.applied_steps, self.fitted_objects
