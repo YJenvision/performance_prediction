@@ -52,9 +52,22 @@ def apply_knowledge_based_formula(df: pd.DataFrame, formula_template: str, new_f
     return df_out
 
 
-def create_polynomial_features(df: pd.DataFrame, columns: List[str], degree: int = 2, interaction_only: bool = False) -> \
-Tuple[pd.DataFrame, PolynomialFeatures]:
-    """为指定列创建多项式特征和交互特征。"""
+def create_polynomial_features(df: pd.DataFrame, columns: List[str], degree: int = 2,
+                               interaction_only: bool = False, keep_original: bool = True) -> \
+        Tuple[pd.DataFrame, PolynomialFeatures]:
+    """
+    为指定列创建多项式特征和交互特征。
+
+    参数:
+    - df: 输入的DataFrame
+    - columns: 要创建多项式特征的列名列表
+    - degree: 多项式的度数
+    - interaction_only: 是否只创建交互项（不包括单个特征的幂次）
+    - keep_original: 是否保留原始特征列
+
+    返回:
+    - 包含新特征的DataFrame和拟合的PolynomialFeatures对象
+    """
     if not all(col in df.columns for col in columns):
         missing_cols = [col for col in columns if col not in df.columns]
         raise ValueError(f"列 {missing_cols} 不在DataFrame中，无法创建多项式特征。")
@@ -66,13 +79,33 @@ Tuple[pd.DataFrame, PolynomialFeatures]:
 
     df_poly_features = pd.DataFrame(poly_features, columns=poly_feature_names, index=df.index)
 
-    df_out = pd.concat([df, df_poly_features], axis=1)
-    # 删除原始列，因为它们已经作为一阶特征包含在多项式特征中
-    df_out = df_out.drop(columns=columns)
+    # 方案1：保留原始特征，只添加高阶项和交互项
+    if keep_original:
+        # 找出哪些是高阶项或交互项（不是原始的一阶项）
+        new_feature_names = []
+        for name in poly_feature_names:
+            # 如果特征名不在原始列名中，说明是新生成的高阶项或交互项
+            if name not in columns:
+                new_feature_names.append(name)
 
-    print(f"=> 为列 {columns} 创建了 {len(poly_feature_names)} 个多项式/交互特征。")
+        # 只添加新的特征，保留原始特征
+        df_out = df.copy()
+        for new_name in new_feature_names:
+            df_out[new_name] = df_poly_features[new_name]
+
+        print(f"=> 为列 {columns} 创建了 {len(new_feature_names)} 个新的多项式/交互特征，保留了原始特征。")
+
+    # 方案2：完全替换为多项式特征（包含一阶项）
+    else:
+        df_out = df.copy()
+        # 删除原始列
+        df_out = df_out.drop(columns=columns)
+        # 添加所有多项式特征
+        df_out = pd.concat([df_out, df_poly_features], axis=1)
+
+        print(f"=> 为列 {columns} 创建了 {len(poly_feature_names)} 个多项式/交互特征，替换了原始特征。")
+
     return df_out, poly
-
 
 def create_ratio_features(df: pd.DataFrame, numerator_col: str, denominator_col: str, new_col_name: str,
                           epsilon: float = 1e-6) -> pd.DataFrame:

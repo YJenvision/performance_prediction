@@ -23,7 +23,7 @@ from steel_automl.results.result_handler import ResultHandler
 
 def _consume_sub_generator(generator: Generator) -> Generator[Dict[str, Any], None, Tuple[Any, bool]]:
     """
-    一个辅助生成器，用于消费子生成器（如数据加载器或预处理器），传递其中间消息，并检查是否有错误。
+    一个辅助生成器，用于消费子生成器，传递其中间消息，并检查是否有错误。
     它本身是一个生成器，最终会 return 一个元组 (final_return_value, has_failed)。
     """
     final_return_value = None
@@ -36,7 +36,7 @@ def _consume_sub_generator(generator: Generator) -> Generator[Dict[str, Any], No
                     (chunk.get("type") == "status_update" and payload.get("status") == "failed"):
                 has_failed = True
 
-            yield chunk  # 将子生成器的所有消息（状态、思考、错误）都传递出去
+            yield chunk
 
             if has_failed:
                 # 如果检测到失败，立即停止消费并返回
@@ -52,7 +52,7 @@ def performanceModelBuilder(
         request_params: Dict[str, Any]
 ) -> Generator[Dict[str, Any], None, None]:
     """
-    性能预报模型AutoML主流程。
+    性能预报模型AutoML主流程，生成器。
     """
     start_time_total = time.time()
     run_timestamp = datetime.now()
@@ -76,9 +76,6 @@ def performanceModelBuilder(
     try:
         # 1. 数据收集
         current_stage = "数据收集"
-        yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "running", "detail": "初始化数据加载器..."}}
-
         data_loader = DataLoader(db_config=DB_CONFIG)
 
         # 连接数据库，从数据库中加载数据。
@@ -90,16 +87,6 @@ def performanceModelBuilder(
             st_no=request_params.get("st_no"),
             steel_grade=request_params.get("steel_grade")
         )
-
-        # 不从数据库加载，从指定excel中加载数据。
-        # fetch_data_generator = data_loader.fetch_data_from_excel(
-        #     sg_sign=request_params.get("sg_sign"),
-        #     target_metric=request_params.get("target_metric"),
-        #     time_range=request_params.get("time_range"),
-        #     product_unit_no=request_params.get("product_unit_no"),
-        #     st_no=request_params.get("st_no"),
-        #     steel_grade=request_params.get("steel_grade")
-        # )
 
         returned_value, has_failed = yield from _consume_sub_generator(fetch_data_generator)
         if has_failed:
@@ -119,7 +106,6 @@ def performanceModelBuilder(
                    "payload": {"stage": current_stage, "detail": error_detail + "查询条件为：" + sql_query}}
             return
 
-        # 传入本次运行的专属文件夹路径
         _save_dataframe(raw_data, "原始数据集", filename_prefix, run_specific_dir)
         pipeline_recorder.add_stage(current_stage, "success", {"sql_query": sql_query, "num_rows": len(raw_data)})
 
@@ -131,13 +117,10 @@ def performanceModelBuilder(
 
         # 2. 数据探索与预处理
         current_stage = "数据探索与预处理"
-        yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "running", "detail": "开始数据探索与预处理..."}}
 
         preprocessor = DataPreprocessor(user_request=user_request, target_metric=target_metric)
         preprocess_generator = preprocessor.preprocess_data(raw_data.copy())
 
-        # 使用辅助函数消费数据探索与预处理生成器
         returned_value, has_failed = yield from _consume_sub_generator(preprocess_generator)
 
         if has_failed:
@@ -147,7 +130,8 @@ def performanceModelBuilder(
 
         df_processed, preprocessing_steps, fitted_preproc_objects = returned_value
 
-        preprocessed_data_path = _save_dataframe(df_processed, "经过清洗后的数据集", filename_prefix, run_specific_dir)
+        preprocessed_data_path = _save_dataframe(df_processed, "经过有效特征筛选和预处理后的数据集", filename_prefix,
+                                                 run_specific_dir)
         preproc_artifacts = {
             "fitted_objects_keys": list(fitted_preproc_objects.keys()),
             "preprocessed_data_path": preprocessed_data_path
@@ -162,15 +146,15 @@ def performanceModelBuilder(
 
         if df_processed.empty and not raw_data.empty:
             critical_preprocessing_failed = True
-            yield {"type": "error", "payload": {"stage": current_stage, "detail": "数据预处理后数据集为空，流程中止。"}}
+            yield {"type": "error",
+                   "payload": {"stage": current_stage, "detail": "经过有效特征筛选和预处理后的数据集为空，流程中止。"}}
             return
 
         llm_plan_failed = any(
-            step.get("step") == "生成详细预处理计划" and step.get("status") == "failed" for step in preprocessing_steps
+            step.get("step") == "生成数据预处理计划" and step.get("status") == "failed" for step in preprocessing_steps
         )
         if llm_plan_failed:
             critical_preprocessing_failed = True
-            print("错误: 智能体未能成功生成预处理计划。")
 
         pipeline_recorder.add_stage(current_stage,
                                     "failed" if critical_preprocessing_failed else "success",
@@ -182,16 +166,18 @@ def performanceModelBuilder(
             pipeline_recorder.set_final_status("failed")
             return
 
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "success", "detail": "完成数据的探索与预处理。"}}
+
         yield {"type": "stage_completed", "payload": {
             "stage": current_stage,
             "status": "success",
             "result": {"rows": len(df_processed), "columns": len(df_processed.columns),
                        "steps_summary": preprocessing_steps}
         }}
+
         # 3. 特征工程
         current_stage = "特征工程"
-        yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "running", "detail": "开始特征工程..."}}
 
         preprocessed_feature_cols = [col for col in df_processed.columns if col != target_metric]
         feature_generator = FeatureGenerator(user_request=user_request, target_metric=target_metric,
@@ -201,12 +187,12 @@ def performanceModelBuilder(
         returned_value, has_failed = yield from _consume_sub_generator(fe_generator)
 
         if has_failed:
-            pipeline_recorder.add_stage(current_stage, "failed", {"details": "特征工程流程因错误中断。"})
+            pipeline_recorder.add_stage(current_stage, "failed", {"details": "特征构造流程因错误中断。"})
             return
 
         df_engineered, fe_steps, fitted_fe_objects = returned_value
 
-        engineered_data_path = _save_dataframe(df_engineered, "经过特征工程后的最终数据集", filename_prefix,
+        engineered_data_path = _save_dataframe(df_engineered, "经过特征构造后的数据集", filename_prefix,
                                                run_specific_dir)
 
         fe_artifacts = {
@@ -219,7 +205,7 @@ def performanceModelBuilder(
             fe_artifacts["fitted_feature_generators_path"] = saved_fe_path
 
         if df_engineered.empty and not df_processed.empty:
-            yield {"type": "error", "payload": {"stage": current_stage, "detail": "特征工程后数据集为空，流程中止。"}}
+            yield {"type": "error", "payload": {"stage": current_stage, "detail": "特征构造后数据集为空，流程中止。"}}
             return
         pipeline_recorder.add_stage(current_stage, "success", {"steps_details": fe_steps}, artifacts=fe_artifacts)
 
@@ -229,6 +215,10 @@ def performanceModelBuilder(
         if X.empty:
             yield {"type": "error", "payload": {"stage": current_stage, "detail": "训练特征集为空，无法进行模型训练。"}}
             return
+
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "success", "detail": "完成特征构造。"}}
+
         yield {"type": "stage_completed", "payload": {"stage": current_stage, "status": "success",
                                                       "result": {"rows": len(df_engineered),
                                                                  "columns": len(df_engineered.columns),
@@ -236,8 +226,6 @@ def performanceModelBuilder(
 
         # 4. 模型选择与计划制定
         current_stage = "模型选择与计划制定"
-        yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "running", "detail": "开始模型选择与计划制定..."}}
 
         model_selector = ModelSelector(
             user_request=user_request,
@@ -269,6 +257,10 @@ def performanceModelBuilder(
 
         pipeline_recorder.add_stage("model_selection_planning", "success",
                                     {"model_plan": automl_plan, "log": model_selection_log})
+
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "success", "detail": "完成模型选择与计划制定。"}}
+
         yield {"type": "stage_completed",
                "payload": {"stage": current_stage, "status": "success", "result": {"automl_plan": automl_plan}}}
 
@@ -286,9 +278,6 @@ def performanceModelBuilder(
 
         # 6. 模型训练与评估
         current_stage = "模型训练与评估"
-        yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "running",
-                           "detail": f"开始进行模型的训练与评估: {chosen_model_name}..."}}
 
         trainer = ModelTrainer(selected_model_name=chosen_model_name, model_info=chosen_model_info,
                                hpo_config=hpo_config, automl_plan=automl_plan, run_specific_dir=run_specific_dir)
@@ -317,6 +306,10 @@ def performanceModelBuilder(
         pipeline_recorder.add_stage("model_training_evaluation", "success",
                                     {"training_log": trainer.training_log, "evaluation_metrics": evaluation_results},
                                     artifacts=training_artifacts)
+
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "success",
+                           "detail": f"{chosen_model_name}模型训练和评估成功完成。"}}
 
         yield {"type": "stage_completed",
                "payload": {"stage": current_stage, "status": "success", "result": evaluation_results}}

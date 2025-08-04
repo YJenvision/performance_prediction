@@ -207,6 +207,9 @@ class ModelTrainer:
             self.evaluation_results["artifacts"]["model_path"] = filepath
             self.training_log.append({"step": "model_saving", "status": "success", "path": filepath})
 
+            yield {"type": "status_update", "payload": {"stage": self.current_stage, "status": "running",
+                                                        "detail": "正在保存模型文件..."}}
+
             yield {"type": "substage_result", "payload": {
                 "stage": self.current_stage, "substage_title": "模型保存",
                 "data": {"status": "成功", "model_path": filepath}

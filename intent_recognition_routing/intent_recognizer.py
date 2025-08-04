@@ -114,12 +114,12 @@ class SteelPerformanceIntentRecognizer:
                        "payload": {"stage": current_stage,
                                    "detail": "相关关键信息提取失败，错误信息：" + str(extracted_info)}}
                 return
-
-            print("意图识别：提取相关关键信息：", extracted_info)
+            extracted_info_json = json.dumps(extracted_info, indent=2, ensure_ascii=False)
+            print("意图识别：提取相关关键信息：", extracted_info_json)
             yield {"type": "substage_result", "payload": {
                 "stage": current_stage,
                 "substage_title": "提取的相关关键信息",
-                "data": extracted_info
+                "data": extracted_info_json
             }}
 
             yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
@@ -192,7 +192,7 @@ class SteelPerformanceIntentRecognizer:
                 return
 
             yield {"type": "status_update",
-                   "payload": {"stage": current_stage, "status": "success", "detail": "意图识别和信息提取全部完成。"}}
+                   "payload": {"stage": current_stage, "status": "success", "detail": "完成建模和评估流程的必要信息提取。"}}
 
             yield {"type": "stage_completed", "payload": {
                 "stage": current_stage,

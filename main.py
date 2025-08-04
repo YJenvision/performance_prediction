@@ -10,10 +10,7 @@ from typing import Any, AsyncGenerator, Generator
 from intent_recognition_routing.intent_recognizer import SteelPerformanceIntentRecognizer
 from steel_automl.performance_model_builder import performanceModelBuilder
 
-app = FastAPI(
-    title="Streaming AutoML Agent API",
-    description="一个用于回归任务的流式钢铁产品力学性能预报智能体API",
-)
+app = FastAPI()
 
 origins = ["*"]
 

@@ -1,10 +1,14 @@
 import pandas as pd
 import ibm_db
 import sqlalchemy
-from typing import Dict, Any, Optional, List, Tuple, Callable, Generator
+from typing import Dict, Any, Optional, List, Tuple, Generator
 from datetime import datetime, timedelta
 from llm_utils import call_llm
 from prompts.prompt_manager import get_prompt
+
+"""
+数据获取模块，主要负责从数据库或Excel文件加载数据（列名进行大写转换）（需要手动从performance_model_builder.py中进行切换），包含SQL动态生成、数据库连接管理和数据读取等功能。使用生成器模式实现流式数据处理，便于前端实时展示进度。
+"""
 
 
 def generate_sql_query(
@@ -16,11 +20,10 @@ def generate_sql_query(
         steel_grade: Optional[List[str]]
 ) -> Generator[Dict[str, Any], None, str]:
     """
-    动态生成SQL查询语句，现在是一个生成器。
+    动态生成SQL查询。
+    返回：生成器对象，流式返回生成过程和最终SQL查询。
     """
-    # 从配置文件中获取系统提示词
     system_prompt = get_prompt('data_loader.generate_sql.system')
-
     user_prompt = f"""请生成一个SQL查询语句，从表 BGTAMAQA.T_ADS_FACT_PCDPF_INTEGRATION_INFO 中查询数据，要求如下：
 1. 查询所有列 (SELECT *)
 2. 时间范围条件：REC_REVISE_TIME BETWEEN '{start_time}' AND '{end_time}'"""
@@ -28,6 +31,9 @@ def generate_sql_query(
     condition_num = 3
 
     def format_in_clause(values: List[str]) -> str:
+        """
+        将列表转换为SQL的IN子句格式
+        """
         return "({})".format(", ".join(f"'{v}'" for v in values))
 
     if sg_sign:
@@ -42,7 +48,6 @@ def generate_sql_query(
     if steel_grade:
         user_prompt += f"\n{condition_num}. 钢种条件：钢种代码通过 SUBSTR(SIGN_CODE, 5, 2) IN {format_in_clause(steel_grade)} 进行匹配"
 
-    # 使用 yield from 流式传输并获取最终SQL
     sql_query_gen = call_llm(system_prompt, user_prompt, model="ds_v3")
     sql_query = ""
     while True:
@@ -58,7 +63,7 @@ def generate_sql_query(
             break
 
     if "AGENT_FAILED" in sql_query:
-        return sql_query  # 直接传递失败信号
+        return sql_query  # 传递失败信号，call_llm中返回的值为"AGENT_FAILED"被捕获
 
     select_pos = sql_query.upper().find("SELECT")
     if select_pos > 0:
@@ -80,7 +85,6 @@ class DataLoader:
 
     def _connect(self) -> bool:
         """连接到数据库。"""
-        print(f"尝试连接到数据库: {self.db_config.get('database')} on {self.db_config.get('host')}")
         try:
             db_username, db_password = self.db_config.get('user'), self.db_config.get('password')
             db_host, db_port = self.db_config.get('host'), self.db_config.get('port')
@@ -102,10 +106,8 @@ class DataLoader:
             with self.engine.connect() as conn:
                 pass
 
-            print("数据库连接成功。")
             return True
         except Exception as e:
-            print(f"数据库连接失败: {e}")
             self._disconnect()
             return False
 
@@ -114,12 +116,8 @@ class DataLoader:
         try:
             if self.engine:
                 self.engine.dispose()
-                print("SQLAlchemy引擎已释放。")
             if self.db_handle and ibm_db.active(self.db_handle):
                 ibm_db.close(self.db_handle)
-                print("IBM DB2连接已断开。")
-        except Exception as e:
-            print(f"断开连接时发生错误: {e}")
         finally:
             self.db_handle = None
             self.engine = None
@@ -129,9 +127,13 @@ class DataLoader:
                    steel_grade: Optional[List[str]]
                    ) -> Generator[Dict[str, Any], None, Tuple[Optional[pd.DataFrame], Optional[str]]]:
         """
-        从数据库获取数据，现在是一个生成器。
+        从数据库获取数据，生成器。
         """
+
         current_stage = "数据收集"
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "running", "detail": "初始化数据加载器..."}}
+
         if not self._connect():
             yield {"type": "error", "payload": {"stage": current_stage,
                                                 "detail": "数据库连接失败，请检查网络连接或数据库配置。"}}
@@ -145,7 +147,7 @@ class DataLoader:
                 now = datetime.now()
                 end_time = now.strftime("%Y%m%d")
                 start_time = (now - timedelta(days=365)).strftime("%Y%m%d")
-                detail = f"智能体提供的时间范围格式无效，使用默认值: {start_time}-{end_time}。"
+                detail = f"在意图识别阶段提供的时间范围格式无效，使用默认值: {start_time}-{end_time}。"
                 yield {"type": "status_update",
                        "payload": {"stage": current_stage, "status": "running", "detail": detail}}
 
@@ -186,6 +188,9 @@ class DataLoader:
                 "data": f"成功获取 {len(df)} 行, {len(df.columns)} 列数据。"
             }}
 
+            yield {"type": "status_update",
+                   "payload": {"stage": current_stage, "status": "success", "detail": "完成数据收集。"}}
+
             return df, query
 
         except Exception as e:
@@ -197,33 +202,34 @@ class DataLoader:
         finally:
             self._disconnect()
 
-    def fetch_data_from_excel(self, sg_sign: Optional[List[str]], target_metric: str, time_range: str,
-                              product_unit_no: Optional[List[str]], st_no: Optional[List[str]],
-                              steel_grade: Optional[List[str]]
+    def fetch_data_from_excel(self, path: str
                               ) -> Generator[Dict[str, Any], None, Tuple[Optional[pd.DataFrame], Optional[str]]]:
         """
-        从数据库获取数据，现在是一个生成器。
+        从excel中获取数据，生成器。
         """
         current_stage = "数据收集"
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "running", "detail": "初始化数据加载器..."}}
+
         query = "excel文件中获取数据"
         try:
             yield {"type": "status_update",
                    "payload": {"stage": current_stage, "status": "running",
-                               "detail": "正在从excel类型文件中获取数据..."}}
+                               "detail": "正在从excel文件中获取数据..."}}
 
-            df = pd.read_excel(r"D:\Desktop\性能预报\湛江数据集\MIA0数据.xlsx")
+            df = pd.read_excel(path)
             df.columns = df.columns.str.upper()
 
             yield {"type": "substage_result", "payload": {
                 "stage": current_stage,
                 "substage_title": "数据概览",
-                "data": f"成功从Excel文件获取 {len(df)} 行, {len(df.columns)} 列数据。"
+                "data": f"成功从excel文件获取 {len(df)} 行, {len(df.columns)} 列数据。"
             }}
 
             return df, query
 
         except Exception as e:
-            error_details = f"从excel类型文件中获取数据时发生错误: {e}"
+            error_details = f"从excel文件中获取数据时发生错误: {e}"
             yield {"type": "error",
                    "payload": {"stage": current_stage, "detail": error_details}}
             return None, query

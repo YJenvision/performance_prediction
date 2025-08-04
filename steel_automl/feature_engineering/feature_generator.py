@@ -16,9 +16,8 @@ class FeatureGenerator:
     一个由LLM驱动的智能特征生成器。
 
     它通过以下步骤工作：
-    1. 从知识库中检索与当前任务相关的特征工程知识。
-    2. 让智能体根据用户需求、现有特征和检索到的知识，制定一个特征工程计划。
-       这个计划的核心是让LLM动态地将理论公式中的元素映射到数据中的实际列名。
+    1. 从知识库中检索与当前任务相关的特征构造知识。
+    2. 让智能体根据用户需求、现有特征和检索到的知识，制定一个特征构造计划。计划的核心是动态地将理论公式中的元素映射到数据中的实际列名。
     3. 执行智能体生成的计划，创建新的特征。
     """
 
@@ -76,7 +75,7 @@ class FeatureGenerator:
     def _execute_feature_engineering_plan(self, df: pd.DataFrame, plan: List[Dict[str, Any]]) -> Generator[
         Dict[str, Any], None, pd.DataFrame]:
         """
-        根据制定的计划执行特征工程步骤，现在是一个生成器，可以流式返回每一步的结果。
+        根据制定的计划执行特征构造步骤，一个生成器，可以流式返回每一步的结果。
         """
         df_engineered = df.copy()
         current_stage = "特征工程"
@@ -88,18 +87,18 @@ class FeatureGenerator:
 
             yield {"type": "status_update", "payload": {
                 "stage": current_stage, "status": "running",
-                "detail": f"执行步骤 {i + 1}/{len(plan)}: {operation}"
+                "detail": f"执行计划 {i + 1}/{len(plan)}: {operation}"
             }}
 
             try:
                 if operation == "no_action":
                     step_log["status"] = "no_action"
-                    result_data = f"步骤 {i + 1}: 无需执行操作。"
+                    result_data = f"计划 {i + 1}: 无需执行操作。"
                 elif operation in FEATURE_ENGINEERING_METHODS_MAP:
                     method_to_call = FEATURE_ENGINEERING_METHODS_MAP[operation]
                     original_cols = set(df_engineered.columns)
 
-                    if operation == "create_polynomial_features":
+                    if operation == "create_polynomial_features":  # 创建多项式特征并保存拟合对象
                         df_engineered, fitted_obj = method_to_call(df_engineered, **params)
                         self.fitted_objects[f"poly_{'_'.join(params.get('columns', []))}"] = fitted_obj
                     else:
@@ -112,7 +111,7 @@ class FeatureGenerator:
                         "operation": operation,
                         "params": params,
                         "status": "成功",
-                        "new_features": list(new_cols) if new_cols else "无新增特征（例如，部分操作是替换或修改现有列）"
+                        "new_features": list(new_cols) if new_cols else "无新增特征（例如部分操作是替换或修改现有列）"
                     }
                 else:
                     step_log["error"] = f"Unknown operation: {operation}"
@@ -124,7 +123,7 @@ class FeatureGenerator:
 
             self.applied_steps.append(step_log)
             yield {"type": "substage_result", "payload": {
-                "stage": current_stage, "substage_title": f"执行步骤: {operation}",
+                "stage": current_stage, "substage_title": f"执行计划: {operation}",
                 "data": result_data
             }}
 
@@ -133,7 +132,7 @@ class FeatureGenerator:
     def generate_features(self, df: pd.DataFrame) -> Generator[
         Dict[str, Any], None, Tuple[DataFrame, List[Dict], Dict]]:
         """
-        执行特征工程的主流程，现在是一个生成器。
+        执行特征构造的主流程，现在是一个生成器。
 
         返回:
         - (通过 yield) 流式思考和状态更新。
@@ -145,7 +144,7 @@ class FeatureGenerator:
         current_feature_names = [col for col in df.columns if col != self.target_metric]
         current_features_str = ", ".join(current_feature_names)
 
-        # 子任务 1: 制定特征工程计划
+        # 子任务 1: 制定特征构造计划
         yield {"type": "status_update", "payload": {
             "stage": current_stage, "status": "running",
             "detail": "正在分析数据并制定特征构造计划..."
@@ -160,7 +159,7 @@ class FeatureGenerator:
                 if chunk.get("type") == "error":
                     yield chunk
                     self.applied_steps.append({"step": "llm_generate_fe_plan", "status": "failed",
-                                               "error": "智能体调用失败", "raw_response": ""})
+                                               "error": "智能体调用失败"})
                     return df, self.applied_steps, self.fitted_objects
                 yield chunk
             except StopIteration as e:
@@ -170,8 +169,7 @@ class FeatureGenerator:
         if "Agent failed" in llm_response_str:
             yield {"type": "error",
                    "payload": {"stage": current_stage, "detail": "特征构造计划制定失败：智能体返回错误。"}}
-            self.applied_steps.append({"step": "llm_generate_fe_plan", "status": "failed", "error": "智能体调用失败",
-                                       "raw_response": llm_response_str})
+            self.applied_steps.append({"step": "llm_generate_fe_plan", "status": "failed", "error": "智能体调用失败", "raw_response": llm_response_str})
             return df, self.applied_steps, self.fitted_objects
 
         feature_engineering_plan = []
@@ -182,13 +180,15 @@ class FeatureGenerator:
 
             self.applied_steps.append(
                 {"step": "llm_generate_fe_plan", "status": "success", "plan": feature_engineering_plan})
+
             yield {"type": "substage_result", "payload": {
                 "stage": current_stage, "substage_title": "特征构造计划",
                 "data": feature_engineering_plan
             }}
+
         except (json.JSONDecodeError, ValueError) as e:
-            error_msg = f"生成的计划无效: {e}"
-            yield {"type": "error", "payload": {"stage": current_stage, "detail": "特征构造计划生成失败：" + error_msg}}
+            error_msg = f"生成的特征构造计划无效: {e}"
+            yield {"type": "error", "payload": {"stage": current_stage, "detail": "特征构造计划制定失败：" + error_msg}}
             self.applied_steps.append(
                 {"step": "llm_generate_fe_plan", "status": "failed", "error": str(e), "raw_response": llm_response_str})
             return df, self.applied_steps, self.fitted_objects
@@ -197,9 +197,10 @@ class FeatureGenerator:
         if not feature_engineering_plan or (
                 len(feature_engineering_plan) == 1 and feature_engineering_plan[0].get("operation") == "no_action"):
             yield {"type": "substage_result", "payload": {
-                "stage": current_stage, "substage_title": "执行计划",
-                "data": "评估后认为无需新增特征。"
+                "stage": current_stage, "substage_title": "执行特征构造计划",
+                "data": "评估后认为无需构造新特征。"
             }}
+
         else:
             yield {"type": "status_update", "payload": {
                 "stage": current_stage, "status": "running",

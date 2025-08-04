@@ -8,7 +8,7 @@ from typing import Generator, Dict, Any, Tuple
 
 def process_think_content(content: str, first_newline_skipped: bool) -> Tuple[str, bool]:
     """
-    处理 <think> 标签内的内容，跳过第一个换行符并替换双换行符为单换行符。
+    处理 <think> 标签内的内容，跳过第一个换行符并替换双换行符为单换行符（压缩多余空行）。
 
     参数:
     - content: <think> 标签内的原始内容。
@@ -22,6 +22,7 @@ def process_think_content(content: str, first_newline_skipped: bool) -> Tuple[st
         if first_newline_index != -1:
             content = content[first_newline_index + 1:]
             first_newline_skipped = True
+    # 压缩多余空行
     content = content.replace('\n\n', '\n')
     return content, first_newline_skipped
 
@@ -33,7 +34,7 @@ def call_llm_stream(
         model: str = "qwen_plus"
 ) -> Generator[Dict[str, Any], None, None]:
     """
-    调用LLM并以流式方式返回响应。
+    根据模型类型（HTTP接口或OpenAI兼容接口）流式获取LLM响应，并区分“思考内容”（<think>标签内）和“普通文本”（标签外）。
 
     参数:
     - system_prompt: 系统提示词。
@@ -51,8 +52,9 @@ def call_llm_stream(
     def get_stream_content_generator() -> Generator[str, None, None]:
         """
         内部生成器函数，根据模型选择不同的API调用方式，并yield内容块。
-        对于qwen_plus，使用requests进行HTTP流式调用。
-        对于其他模型，使用openai库。
+        1. 对于qwen_plus，使用requests进行HTTP流式调用。通过requests库调用HTTP接口（SSE流式响应）
+        构造请求头（包含API密钥）和payload（流式开关、提示词），迭代解析SSE格式响应（data: 前缀），提取content字段并yield
+        2. 对于其他模型，使用openai兼容接口。
         """
         # 如果模型是 qwen_plus，则使用 requests 进行 HTTP POST 调用
         if model == "qwen_plus":
@@ -84,14 +86,13 @@ def call_llm_stream(
                                 break
                             try:
                                 chunk = json.loads(json_str)
-                                # 安全地提取内容
                                 content = chunk.get('choices', [{}])[0].get('delta', {}).get('content', '')
                                 if content:
                                     yield content
                             except (json.JSONDecodeError, IndexError):
                                 print(f"Warning: Could not decode or parse JSON from stream: {json_str}")
                                 continue
-        # 否则，使用原有的 openai 库逻辑
+        # 其他模型使用openai兼容接口逻辑
         else:
             if model == "ds_v3":
                 LLM_MODEL_NAME = config.LLM_MODEL_NAME_V3
@@ -106,7 +107,6 @@ def call_llm_stream(
                 openai.api_base = config.OPENAI_API_BASE_QWEN
                 openai.api_key = config.OPENAI_API_KEY_QWEN
             else:
-                # 如果模型名称无效，返回一个空的生成器
                 return
 
             response_stream = openai.ChatCompletion.create(
@@ -123,8 +123,8 @@ def call_llm_stream(
                 if content:
                     yield content
 
-    # 主处理逻辑
-    # 这部分逻辑对于所有模型的流式响应都是通用的
+    # 主处理逻辑：解析流式内容，区分思考/普通文本
+    # 对于所有模型的流式响应都通用
     try:
         content_stream = get_stream_content_generator()
 
@@ -184,7 +184,6 @@ def call_llm_stream(
 
     except Exception as e:
         error_message = f"Agent failed: {str(e)}"
-        print(error_message)
         yield {"error": error_message}
 
 
@@ -195,19 +194,18 @@ def call_llm(
         model: str = "qwen_plus"
 ) -> Generator[Dict[str, Any], None, str]:
     """
-    一个生成器函数，它将思考过程按行或按块流式传输，并返回最终的非思考文本。
-    对`call_llm_stream`的封装，实现了统一的输出格式。
+    一个生成器函数，通过实时消费底层流式数据（call_llm_stream）并即时处理输出标准化事件流（思考流、错误、最终结果）。
 
     :return: 一个生成器，用于生成思考流、错误，并最终返回收集到的响应字符串。
     """
-    full_response_parts = []
-    error_message = ""
-    think_buffer = ""
+    full_response_parts = []  # 累积普通文本
+    error_message = ""  # 错误信息
+    think_buffer = ""  # 累积思考内容
     for chunk in call_llm_stream(system_prompt, user_prompt, temperature, model):
         if "error" in chunk:
             error_message = chunk["error"]
             yield {"type": "error",
-                   "payload": {"stage": "智能体调用", "details": "智能体调用失败，" + error_message}}
+                   "payload": {"stage": "智能体调用", "details": "智能体调用失败" + error_message}}
             break
         elif "think_content" in chunk and chunk["think_content"]:
             think_buffer += chunk["think_content"]
@@ -225,18 +223,19 @@ def call_llm(
 
     final_response = "".join(full_response_parts)
     final_response = final_response.replace('```json', '').replace('```', '').strip()
+
+    if final_response == "":
+        yield {"type": "error", "payload": {"stage": "智能体调用", "details": "智能体调用成功但响应为空"}}
+        return "Agent failed: 智能体调用成功但响应为空"
+
     return final_response
 
 
 def get_embedding(text: str) -> np.ndarray:
     """
-    调用嵌入API获取文本的嵌入向量。
-
-    参数:
-        text (str): 需要获取嵌入的文本。
-
-    返回:
-        np.ndarray: 文本的嵌入向量，空数组表示失败.
+    调用嵌入API获取文本的数值向量（用于语义相似度计算等）。
+    参数: text (str): 需要获取嵌入的文本。
+    返回: np.ndarray: 文本的嵌入向量，空数组表示失败.
     """
     try:
         response = requests.post(config.EMBEDDING_API_URL, json={"prompt": text})
