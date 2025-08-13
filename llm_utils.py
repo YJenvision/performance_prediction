@@ -225,7 +225,7 @@ def call_llm(
     final_response = final_response.replace('```json', '').replace('```', '').strip()
 
     if final_response == "":
-        yield {"type": "error", "payload": {"stage": "智能体调用", "details": "智能体调用成功但响应为空"}}
+        yield {"type": "error", "payload": {"stage": "智能体调用", "details": "智能体调用成功但响应为空 请检查大语言模型的服务状态"}}
         return "Agent failed: 智能体调用成功但响应为空"
 
     return final_response

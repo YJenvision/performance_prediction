@@ -24,7 +24,7 @@ def generate_sql_query(
     返回：生成器对象，流式返回生成过程和最终SQL查询。
     """
     system_prompt = get_prompt('data_loader.generate_sql.system')
-    user_prompt = f"""请生成一个SQL查询语句，从表 BGTAMAQA.T_ADS_FACT_PCDPF_INTEGRATION_INFO 中查询数据，要求如下：
+    user_prompt = f"""现在，严格按照系统提示中的输出要求，从表 BGTAMAQA.T_ADS_FACT_PCDPF_INTEGRATION_INFO 中查询数据，要求如下：
 1. 查询所有列 (SELECT *)
 2. 时间范围条件：REC_REVISE_TIME BETWEEN '{start_time}' AND '{end_time}'"""
 
@@ -188,8 +188,6 @@ class DataLoader:
                 "data": f"成功获取 {len(df)} 行, {len(df.columns)} 列数据。"
             }}
 
-            yield {"type": "status_update",
-                   "payload": {"stage": current_stage, "status": "success", "detail": "完成数据收集。"}}
 
             return df, query
 

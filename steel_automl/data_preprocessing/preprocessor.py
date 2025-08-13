@@ -94,7 +94,7 @@ class DataPreprocessor:
             steps_log.append({
                 "step": "基于规则的有效特征筛选",
                 "status": "success",
-                "details": "移除常量列或空列。",
+                "details": "移除常量列和全空列。",
                 "removed_columns": rule_based_removed_cols
             })
 
@@ -157,7 +157,7 @@ class DataPreprocessor:
                 df_screened.drop(columns=valid_cols_to_delete, inplace=True)
                 steps_log.append({
                     "step": "基于需求和经验知识的有效特征动态筛选", "status": "success",
-                    "details": "基于需求和经验知识，删除了其他性能指标和不适用特征。",
+                    "details": "基于需求和经验知识删除了其他性能指标和不适用特征。",
                     "removed_columns": valid_cols_to_delete
                 })
 
@@ -291,6 +291,7 @@ class DataPreprocessor:
                 "removed_invalid_rows": int(dropped_invalid_count),
                 "remaining_rows": len(df)
             })
+
             yield {"type": "substage_result", "payload": {
                 "stage": current_stage, "substage_title": "目标性能列的检视和清洗",
                 "data": f"移除了 {dropped_na_count} 个{self.target_metric}为空值的行和 {dropped_invalid_count} 个{self.target_metric}为无效值（0）的行。剩余 {len(df)} 行。"}

@@ -93,7 +93,7 @@ async def process_request_stream(user_query: str) -> AsyncGenerator[str, None]:
             yield event_string
 
 
-@app.post("/automl-stream")
+@app.post("/performance_prediction_agent")
 async def automl_stream_endpoint(request: UserRequest):
     """
     接收用户自然语言请求，流式返回AutoML流程的状态和结果。

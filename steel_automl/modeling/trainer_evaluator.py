@@ -1,5 +1,5 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold, TimeSeriesSplit
 from typing import Dict, Any, Tuple, List, Optional, Generator
 import os
 import joblib
@@ -9,12 +9,15 @@ import traceback
 from config import DEFAULT_RANDOM_STATE
 from steel_automl.modeling.algorithms.random_forest import RandomForestModel
 from steel_automl.modeling.algorithms.xgboost_model import XGBoostModel
-from steel_automl.results.visualization import plot_prediction_vs_actual, plot_error_distribution, plot_value_distribution
+from steel_automl.modeling.algorithms.lightgbm_model import LightGBMModel
+from steel_automl.results.visualization import plot_prediction_vs_actual, plot_error_distribution, \
+    plot_value_distribution
 
 # 模型算法库中模型类映射表
 MODEL_CLASSES = {
     "RandomForestRegressor": RandomForestModel,
     "XGBoostRegressor": XGBoostModel,
+    "LightGBMRegressor": LightGBMModel,
 }
 
 
@@ -27,7 +30,7 @@ class ModelTrainer:
     每个子任务的状态和结果，以支持前端的渐进式呈现。
     """
 
-    def __init__(self, selected_model_name: str, model_info: Dict[str, Any], hpo_config: Dict[str, Any],
+    def __init__(self, selected_model_name: str, model_info: Dict[str, Any],
                  automl_plan: Dict[str, Any], run_specific_dir: str):
         """
         初始化模型训练器。
@@ -38,9 +41,16 @@ class ModelTrainer:
         self.model_name = selected_model_name
         self.model_class = MODEL_CLASSES[selected_model_name]
         self.hyperparam_suggestions = model_info.get("hyperparameter_suggestions", {})
-        self.hpo_config = hpo_config
-        self.acceptable_error = automl_plan.get("model_plan", {}).get("acceptable_error")
-        self.request_params = automl_plan.get("user_request_details", {})
+
+        # 从automl_plan中提取详细计划
+        self.automl_plan = automl_plan
+        self.model_plan = self.automl_plan.get("model_plan", {})
+        self.data_split_plan = self.model_plan.get("data_split_plan", {"method": "sequential", "test_size": 0.2})
+        self.cv_plan = self.model_plan.get("cv_plan", {"method": "time_series", "k_folds": 3})
+        self.hpo_config = self.model_plan.get("hpo_config", {"method": "RandomizedSearchCV", "n_iter": 30})
+        self.acceptable_error = self.model_plan.get("acceptable_error")
+
+        self.request_params = self.automl_plan.get("user_request_details", {})
         self.target_metric = self.request_params.get("target_metric", "Unknown Target")
         self.run_timestamp_str = datetime.now().strftime('%Y%m%d%H%M%S')
         self.current_stage = "模型训练与评估"
@@ -113,7 +123,6 @@ class ModelTrainer:
             )
             metrics["value_distribution_plot_path"] = value_dist_path
 
-
         if dataset_name == "测试集" and predictions is not None:
             data_dir = os.path.join(self.run_specific_dir, "data")
             os.makedirs(data_dir, exist_ok=True)
@@ -128,8 +137,7 @@ class ModelTrainer:
 
         return metrics, f"对 {dataset_name} 的评估和可视化完成。"
 
-    def train_and_evaluate(self, X: pd.DataFrame, y: pd.Series, test_size: float) -> Generator[
-        Dict[str, Any], None, bool]:
+    def train_and_evaluate(self, X: pd.DataFrame, y: pd.Series) -> Generator[Dict[str, Any], None, bool]:
         """
         **核心修改方法**
         执行模型训练、评估、并保存过程产物。
@@ -137,19 +145,35 @@ class ModelTrainer:
         """
         # === 子任务 1: 数据划分 ===
         substage_title_split = "数据划分"
+        split_method = self.data_split_plan.get("method", "sequential")
+        test_size = self.data_split_plan.get("test_size", 0.2)
+
         yield {"type": "status_update",
-               "payload": {"stage": self.current_stage, "status": "running", "detail": "正在划分数据集..."}}
-        log_entry = {"step": substage_title_split, "test_size": test_size, "random_state": DEFAULT_RANDOM_STATE}
+               "payload": {"stage": self.current_stage, "status": "running",
+                           "detail": f"正在执行数据划分 (方法: {split_method}, 测试集比例: {test_size})..."}}
+
+        log_entry = {"step": substage_title_split, "plan": self.data_split_plan}
+
         try:
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size,
-                                                                random_state=DEFAULT_RANDOM_STATE)
+            if split_method == 'sequential':
+                # 顺序切分 (假设数据已按时间排序)
+                split_index = int(len(X) * (1 - test_size))
+                X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
+                y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]
+                log_entry["detail"] = "Data was split sequentially."
+            else:  # 'random'
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y, test_size=test_size, random_state=DEFAULT_RANDOM_STATE
+                )
+                log_entry["detail"] = "Data was split randomly."
+
             log_entry["status"] = "success"
             log_entry["train_shape"] = X_train.shape
             log_entry["test_shape"] = X_test.shape
             self.training_log.append(log_entry)
 
             result_data = {
-                "detail": f"数据集成功划分为训练集 ({X_train.shape[0]}条) 和测试集 ({X_test.shape[0]}条)。",
+                "detail": f"数据集成功划分为训练集 ({X_train.shape[0]}条) 和测试集 ({X_test.shape[0]}条)。方法: {split_method}",
                 "train_shape": {"rows": X_train.shape[0], "columns": X_train.shape[1]},
                 "test_shape": {"rows": X_test.shape[0], "columns": X_test.shape[1]}
             }
@@ -168,6 +192,32 @@ class ModelTrainer:
 
         # === 子任务 2: 模型训练与超参数优化 ===
         substage_title_train = "模型训练"
+
+        # --- 子任务 2.1: 准备交叉验证策略 ---
+        cv_method = self.cv_plan.get("method", "time_series")
+        k_folds = self.cv_plan.get("k_folds", 5)
+        cv = None
+        try:
+            if cv_method == 'time_series':
+                cv = TimeSeriesSplit(n_splits=k_folds)
+                cv_detail_msg = f"使用时序{k_folds}折交叉验证。"
+            else:  # 'random'
+                cv = KFold(n_splits=k_folds, shuffle=True, random_state=DEFAULT_RANDOM_STATE)
+                cv_detail_msg = f"使用随机{k_folds}折交叉验证。"
+
+            self.training_log.append({"step": "cv_setup", "status": "success", "plan": self.cv_plan})
+            yield {"type": "substage_result", "payload": {
+                "stage": self.current_stage, "substage_title": "交叉验证策略",
+                "data": {"detail": cv_detail_msg}
+            }}
+        except Exception as e:
+            self.training_log.append({"step": "cv_setup", "status": "failed", "error": str(e)})
+            error_msg = f"设置交叉验证策略失败: {e}"
+            yield {"type": "error",
+                   "payload": {"stage": self.current_stage, "detail": error_msg + traceback.format_exc()}}
+            return False
+
+        # --- 子任务 2.2: 开始训练 ---
         detail = f"开始训练模型: {self.model_name}"
         if self.hpo_config:
             detail += f" (使用 {self.hpo_config.get('method', 'HPO')} 进行超参数优化)"
@@ -180,6 +230,12 @@ class ModelTrainer:
                 yield {"type": "status_update", "payload": {"stage": self.current_stage, "status": "running",
                                                             "detail": "未提供超参数搜索空间，将使用默认参数训练。"}}
                 self.hpo_config = None
+
+            # 将准备好的cv对象放入hpo_config中
+            if self.hpo_config:
+                self.hpo_config['cv'] = cv
+                if 'cv_folds' in self.hpo_config:
+                    del self.hpo_config['cv_folds']
 
             self.model_instance.train(X_train, y_train, hpo_config=self.hpo_config, param_grid=param_grid_for_tuning)
             self.trained_model_object = self.model_instance.model
@@ -197,7 +253,7 @@ class ModelTrainer:
             }}
             self.training_log.append(train_log_entry)
 
-            # --- 子任务 2.1: 模型保存 ---
+            # --- 子任务 2.3: 模型保存 ---
             model_dir = os.path.join(self.run_specific_dir, "models")
             os.makedirs(model_dir, exist_ok=True)
             filename = f"{self._generate_artifact_base_filename()}.pkl"

@@ -9,6 +9,8 @@ import pickle
 from datetime import datetime
 from typing import Dict, Any, List, Tuple, Generator
 
+import pandas as pd
+
 from config import DB_CONFIG
 from steel_automl.data_acquisition.data_loader import DataLoader
 from steel_automl.data_preprocessing.preprocessor import DataPreprocessor
@@ -106,8 +108,28 @@ def performanceModelBuilder(
                    "payload": {"stage": current_stage, "detail": error_detail + "查询条件为：" + sql_query}}
             return
 
+        # 如果存在时间列，则按时间排序
+        if 'REC_REVISE_TIME' in raw_data.columns:
+            yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
+                                                        "detail": "数据包含时间戳，正在按时间顺序排序以支持时序建模..."}}
+            try:
+                # 确保时间列是可排序的类型
+                raw_data['REC_REVISE_TIME'] = pd.to_datetime(raw_data['REC_REVISE_TIME'])
+                raw_data.sort_values(by='REC_REVISE_TIME', inplace=True)
+                raw_data.reset_index(drop=True, inplace=True)
+                yield {"type": "substage_result", "payload": {
+                    "stage": current_stage, "substage_title": "数据排序",
+                    "data": "已成功按 'REC_REVISE_TIME' 字段对数据进行升序排列。"
+                }}
+            except Exception as e:
+                yield {"type": "error", "payload": {"stage": current_stage,
+                                                    "detail": f"按时间列 'REC_REVISE_TIME' 排序时失败: {e}"}}
+
         _save_dataframe(raw_data, "原始数据集", filename_prefix, run_specific_dir)
         pipeline_recorder.add_stage(current_stage, "success", {"sql_query": sql_query, "num_rows": len(raw_data)})
+
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "success", "detail": "完成数据收集。"}}
 
         yield {"type": "stage_completed", "payload": {
             "stage": current_stage,
@@ -269,20 +291,29 @@ def performanceModelBuilder(
         model_recommendations = automl_plan["model_recommendations"]
         chosen_model_name = list(model_recommendations.keys())[0]
         chosen_model_info = model_recommendations[chosen_model_name]
-        data_split_ratio = plan_details.get("data_split_ratio", 0.2)
+
+        # 从新的计划结构中提取信息
+        data_split_plan = plan_details.get("data_split_plan", {"method": "sequential", "test_size": 0.2})
+        cv_plan = plan_details.get("cv_plan", {"method": "time_series", "k_folds": 3})
         hpo_config = plan_details.get("hpo_config", {"method": "RandomizedSearchCV", "n_iter": 30})
+
         pipeline_recorder.set_model_name(chosen_model_name)
         pipeline_recorder.add_stage("decision_making", "success",
-                                    {"chosen_model": chosen_model_name, "data_split_ratio": data_split_ratio,
+                                    {"chosen_model": chosen_model_name,
+                                     "data_split_plan": data_split_plan,
+                                     "cv_plan": cv_plan,
                                      "hpo_config": hpo_config})
 
         # 6. 模型训练与评估
         current_stage = "模型训练与评估"
 
-        trainer = ModelTrainer(selected_model_name=chosen_model_name, model_info=chosen_model_info,
-                               hpo_config=hpo_config, automl_plan=automl_plan, run_specific_dir=run_specific_dir)
+        trainer = ModelTrainer(selected_model_name=chosen_model_name,
+                               model_info=chosen_model_info,
+                               automl_plan=automl_plan,
+                               run_specific_dir=run_specific_dir)
 
-        train_generator = trainer.train_and_evaluate(X.copy(), y.copy(), test_size=data_split_ratio)
+        # train_and_evaluate 不再直接接收 test_size，它会从 automl_plan 中读取完整的划分计划
+        train_generator = trainer.train_and_evaluate(X.copy(), y.copy())
         training_succeeded, has_failed = yield from _consume_sub_generator(train_generator)
 
         if has_failed or not training_succeeded:
@@ -348,8 +379,8 @@ def performanceModelBuilder(
         pipeline_recorder.set_final_status("failed")
 
         # 即使失败，编译并返回到目前为止的结果
-        final_result_package = ResultHandler(
+        ResultHandler(
             pipeline_recorder.get_pipeline_summary(),
             run_specific_dir=run_specific_dir
-        ).compile_final_result()
+        ).save_final_result()
         return

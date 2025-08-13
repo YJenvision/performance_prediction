@@ -10,7 +10,6 @@ from scipy.stats import randint, uniform
 from config import DEFAULT_RANDOM_STATE
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 
-
 try:
     import torch
 
@@ -147,22 +146,23 @@ class XGBoostModel:
                 should_tune = False
             else:
                 search_cv = None
-                cv_folds = hpo_config.get("cv_folds", 3)
+                # [修改] 优先使用传入的cv对象，如果没有则回退到固定的折数
+                cv_strategy = hpo_config.get("cv", 3)
                 scoring = hpo_config.get("scoring_metric", 'neg_mean_squared_error')
                 n_iter = hpo_config.get("n_iter", 30)
 
                 if hpo_method == "GridSearchCV":
-                    search_cv = GridSearchCV(estimator=base_model, param_grid=valid_param_grid, cv=cv_folds,
+                    search_cv = GridSearchCV(estimator=base_model, param_grid=valid_param_grid, cv=cv_strategy,
                                              scoring=scoring, n_jobs=-1, verbose=1)
                 elif hpo_method == "RandomizedSearchCV":
                     param_distributions = self._prepare_random_search_distributions(valid_param_grid)
                     search_cv = RandomizedSearchCV(estimator=base_model, param_distributions=param_distributions,
-                                                   n_iter=n_iter, cv=cv_folds, scoring=scoring, n_jobs=-1, verbose=1,
+                                                   n_iter=n_iter, cv=cv_strategy, scoring=scoring, n_jobs=-1, verbose=1,
                                                    random_state=DEFAULT_RANDOM_STATE)
                 elif hpo_method == "BayesianOptimization":
                     search_space = self._prepare_bayesian_search_space(valid_param_grid)
                     search_cv = BayesSearchCV(estimator=base_model, search_spaces=search_space, n_iter=n_iter,
-                                              cv=cv_folds, scoring=scoring, n_jobs=-1, verbose=1,
+                                              cv=cv_strategy, scoring=scoring, n_jobs=-1, verbose=1,
                                               random_state=DEFAULT_RANDOM_STATE)
 
                 if search_cv:

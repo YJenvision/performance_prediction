@@ -5,7 +5,7 @@ import sys
 
 def stream_automl_response(query: str):
     """流式接收AutoML API响应"""
-    url = "http://localhost:8003/automl-stream"
+    url = "http://localhost:8003/performance_prediction_agent"
     headers = {"Content-Type": "application/json"}
     data = {"query": query}
 
@@ -23,7 +23,7 @@ def stream_automl_response(query: str):
 
 
 if __name__ == "__main__":
-    test_query = ("用最近两年Q235B牌号的数据构建一个抗拉强度预报模型，使用XGboost，用贝叶斯优化利用R2"
-                  "进行超参数优化，竭尽你所能使得模型效果好，可以按照你的想法创建一些合理的多项式或者比率交互特征，我的可接受误差浮动是正负20以内，不需要进行异常值的识别和处理。")
+    test_query = ("用最近两年Q235B牌号的数据构建一个抗拉强度预报模型，使用XGboost算法，使用贝叶斯优化利用R2"
+                  "进行超参数优化，快速验证模型效果，可以按照你的想法创建一些合理的多项式或者比率交互特征，我的可接受误差浮动是正负20以内，不需要进行异常值的识别和处理。")
     # test_query = "目前在线的Q235B模型的效果怎么样？"
     stream_automl_response(test_query)

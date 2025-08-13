@@ -10,7 +10,7 @@ from prompts.prompt_manager import get_prompt
 class ModelSelector:
     """
     为AutoML流程生成一个完整的算法选择计划。
-    该计划包括可接受误差、数据划分策略、超参数优化(HPO)方法、推荐的模型及其超参数范围。
+    该计划包括可接受误差、数据划分策略、交叉验证策略、超参数优化(HPO)方法、推荐的模型及其超参数范围。
     """
 
     def __init__(self, user_request: str, target_metric: str, num_features: int, num_samples: int):
@@ -32,6 +32,22 @@ class ModelSelector:
         # self.history_kb_service = KnowledgeBaseService(HISTORICAL_CASES_KB_NAME)
 
         # 系统当前支持的组件
+        self.available_data_split_methods = {
+            "sequential": {
+                "description": "顺序切分。严格按照时间顺序将数据集的最后一部分作为测试集。这是时间序列数据的首选，可以有效模拟真实预测场景，避免未来数据泄露。"
+            },
+            "random": {
+                "description": "随机切分。从整个数据集中随机抽样一部分作为测试集。适用于不具有时间序列特征的数据。"
+            }
+        }
+        self.available_cv_methods = {
+            "time_series": {
+                "description": "时序K折交叉验证 (TimeSeriesSplit)。在每次迭代中，验证集都位于训练集之后。这是时间序列数据交叉验证的标准做法。"
+            },
+            "random": {
+                "description": "随机K折交叉验证 (KFold)。将数据随机分成K个子集，轮流作为验证集。适用于非时间序列数据。"
+            }
+        }
         self.available_models = {
             "RandomForestRegressor": {
                 "description": "随机森林回归器，基于决策树的集成学习方法，鲁棒性较好，不易过拟合。",
@@ -41,6 +57,10 @@ class ModelSelector:
                 "description": "XGBoost回归器，梯度提升框架的高效实现，通常性能优越但需要仔细调参。",
                 "hyperparameters": ["n_estimators", "learning_rate", "max_depth", "subsample", "colsample_bytree"]
             },
+            "LightGBMRegressor": {
+                "description": "LightGBM回归器，一种高性能的梯度提升框架，使用基于直方图的算法，训练速度快，内存占用低。",
+                "hyperparameters": ["n_estimators", "learning_rate", "max_depth", "num_leaves", "subsample", "colsample_bytree"]
+            }
         }
         self.available_hpo_methods = {
             "GridSearchCV": {
@@ -122,12 +142,16 @@ class ModelSelector:
     def _generate_llm_prompt(self, acceptable_error: Dict) -> Tuple[str, str]:
         """为生成完整的AutoML计划生成系统和用户提示词。"""
         # Prepare JSON strings for injection into the prompt
+        available_data_split_methods_json = json.dumps(self.available_data_split_methods, indent=2, ensure_ascii=False)
+        available_cv_methods_json = json.dumps(self.available_cv_methods, indent=2, ensure_ascii=False)
         available_models_json = json.dumps(self.available_models, indent=2, ensure_ascii=False)
         available_hpo_methods_json = json.dumps(self.available_hpo_methods, indent=2, ensure_ascii=False)
         acceptable_error_json = json.dumps(acceptable_error)
 
         system_prompt = get_prompt(
             'selector.generate_automl_plan.system',
+            available_data_split_methods_json=available_data_split_methods_json,
+            available_cv_methods_json=available_cv_methods_json,
             available_models_json=available_models_json,
             available_hpo_methods_json=available_hpo_methods_json,
             acceptable_error_json=acceptable_error_json
@@ -153,15 +177,32 @@ class ModelSelector:
             "model_plan": {
                 "reason": f"由于智能体失败或响应无效而启用后备计划: {reason}",
                 "acceptable_error": acceptable_error,
-                "data_split_ratio": 0.2,
-                "hpo_config": {"method": "RandomizedSearchCV", "n_iter": 30, "cv_folds": 3,
-                               "scoring_metric": "neg_mean_squared_error"}
+                "data_split_plan": {
+                    "method": "sequential",
+                    "test_size": 0.2,
+                    "reason": "后备计划默认采用顺序切分，以处理潜在的时间序列数据。"
+                },
+                "cv_plan": {
+                    "method": "time_series",
+                    "k_folds": 5,
+                    "reason": "后备计划默认采用时序交叉验证，以处理潜在的时间序列数据。"
+                },
+                "hpo_config": {
+                    "method": "RandomizedSearchCV",
+                    "n_iter": 30,
+                    "scoring_metric": "neg_mean_squared_error"
+                }
             },
             "model_recommendations": {
-                "RandomForestRegressor": {
-                    "reason": "默认回退模型，通常稳健且表现良好。",
-                    "hyperparameter_suggestions": {"n_estimators": [50, 150], "max_depth": [5, 20],
-                                                   "min_samples_split": [2, 10]}
+                "XGBoostRegressor": {
+                    "reason": "默认回退模型，XGBoost通常在各种回归任务上表现稳健且高效。",
+                    "hyperparameter_suggestions": {
+                        "n_estimators": [50, 200],
+                        "learning_rate": [0.01, 0.2, "log"],
+                        "max_depth": [3, 10],
+                        "subsample": [0.7, 1.0],
+                        "colsample_bytree": [0.7, 1.0]
+                    }
                 }
             }
         }
@@ -199,7 +240,8 @@ class ModelSelector:
 
         # 子任务 2: 基于误差范围生成完整的建模计划
         yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "running", "detail": "正在制定算法模型与模型超参数优化计划..."}}
+               "payload": {"stage": current_stage, "status": "running",
+                           "detail": "正在制定算法模型与模型超参数优化计划..."}}
         system_prompt, user_prompt = self._generate_llm_prompt(acceptable_error)
 
         llm_response_str = ""
@@ -234,8 +276,11 @@ class ModelSelector:
 
         try:
             parsed_response = json.loads(llm_response_str)
+            # 验证计划的完整性
             if "model_plan" not in parsed_response or "model_recommendations" not in parsed_response:
                 raise ValueError("响应缺少 'model_plan' 或 'model_recommendations' 顶级键。")
+            if "data_split_plan" not in parsed_response["model_plan"] or "cv_plan" not in parsed_response["model_plan"]:
+                raise ValueError("响应的 'model_plan' 中缺少 'data_split_plan' 或 'cv_plan'。")
 
             recommendations = parsed_response.get("model_recommendations", {})
             if not isinstance(recommendations, dict) or not recommendations:
@@ -247,10 +292,12 @@ class ModelSelector:
                 raise ValueError("智能体未提供任何受支持的模型推荐。")
 
             final_plan = {"model_plan": parsed_response["model_plan"], "model_recommendations": valid_recommendations}
+            # 确保可接受误差被正确地设置在最终计划中
             final_plan["model_plan"]["acceptable_error"] = acceptable_error
             log.append({"step": "llm_generate_plan", "status": "success", "plan": final_plan})
             yield {"type": "substage_result",
-                   "payload": {"stage": current_stage, "substage_title": "算法模型与模型超参数优化计划", "data": final_plan}}
+                   "payload": {"stage": current_stage, "substage_title": "算法模型与模型超参数优化计划",
+                               "data": final_plan}}
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             error_msg = f"智能体解析或验证响应失败: {e}"
             log.append(
