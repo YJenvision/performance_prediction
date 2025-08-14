@@ -19,7 +19,8 @@ from prompts.prompt_manager import get_prompt
 
 class DataPreprocessor:
     """
-    数据预处理类，用于数据清洗、有效特征筛选和预处理流程。它结合了规则式处理、领域知识库和大语言模型生成预处理策略
+    数据预处理类，用于数据清洗、有效特征初步筛选和预处理流程。它结合了规则式处理、领域知识库和大语言模型生成预处理策略
+    采用多阶段、迭代式的方法，结合规则、领域知识和LLM进行智能决策。
     """
 
     def __init__(self, user_request: str, target_metric: str):
@@ -33,6 +34,56 @@ class DataPreprocessor:
         self.domain_kb = KnowledgeBaseService(PROFESSIONAL_KNOWLEDGE_KB_NAME)
         self.applied_steps = []
         self.fitted_objects = {}
+        self.PROCESSING_ORDER = [
+            # 删除操作最先
+            "delete_column", "delete_rows_with_missing_in_column",
+            # 缺失值指示器与填充
+            "add_missing_indicator", "impute_auto", "impute_mean", "impute_median", "impute_most_frequent",
+            # 异常值与变换
+            "winsorize_by_quantile", "cap_outliers_iqr", "yeo_johnson_transform_column",
+            # 类别编码
+            "rare_label_collapse", "frequency_encode_column", "target_encode_column", "one_hot_encode_column",
+            "label_encode_column",
+            # 数值缩放
+            "robust_scale_column", "standard_scale_column", "min_max_scale_column",
+            # 空操作
+            "no_action"
+        ]
+
+    def _call_llm_for_plan(self, system_prompt: str, user_prompt: str, stage_name: str) -> Generator[
+        Dict[str, Any], None, Dict]:
+        """一个通用的LLM调用和解析的生成器函数。"""
+        max_retries = 3
+        llm_plan = None
+        for i in range(max_retries):
+            llm_gen = call_llm(system_prompt, user_prompt, model="ds_v3")
+            llm_response_str = ""
+            try:
+                # 消费子生成器并向外传递消息
+                llm_response_str = yield from llm_gen
+            except StopIteration as e:
+                llm_response_str = e.value
+
+            try:
+                # 尝试解析响应
+                parsed_json = json.loads(llm_response_str)
+                if isinstance(parsed_json, dict):
+                    llm_plan = parsed_json
+                    self.applied_steps.append({"step": stage_name, "status": "success", "plan": llm_plan})
+                    break  # 成功解析并验证格式后退出循环
+                else:
+                    raise json.JSONDecodeError("LLM response is not a dictionary.", llm_response_str, 0)
+            except json.JSONDecodeError as e:
+                if i == max_retries - 1:
+                    error_msg = f"在第 {i + 1} 次尝试后，智能体响应解析失败: {e}"
+                    self.applied_steps.append(
+                        {"step": stage_name, "status": "failed", "error": error_msg, "raw_response": llm_response_str})
+                    yield {"type": "error", "payload": {"stage": "数据探索与预处理", "detail": error_msg}}
+                    # 在最终失败时返回一个空的plan
+                    return {}
+
+        # 如果循环正常结束（因为break），llm_plan将包含有效计划
+        return llm_plan if llm_plan is not None else {}
 
     def _generate_prompt_for_screening(self, all_columns: List[str], perf_metrics_info: str,
                                        unsuitable_features_info: str) -> Tuple[str, str]:
@@ -44,7 +95,7 @@ class DataPreprocessor:
         )
 
         user_prompt = f"""
-请根据以下信息，为数据集执行有效特征筛选任务。
+请根据以下信息，为数据集执行有效特征初步筛选任务。
 
 **当前数据集所有列:**
 {json.dumps(all_columns, indent=2)}
@@ -64,14 +115,14 @@ class DataPreprocessor:
 
     def _feature_screening(self, df: pd.DataFrame) -> Generator[
         Dict[str, Any], None, Tuple[pd.DataFrame, List[Dict]]]:
-        """执行基于规则和经验知识的有效特征筛选, 生成器。"""
+        """执行基于规则和经验知识的有效特征初步筛选, 生成器。"""
         steps_log = []
         df_screened = df.copy()
         current_stage = "数据探索与预处理"
 
         # 子任务1: 删除常量列和全空列
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
-                                                    "detail": "有效特征筛选：正在检查并移除常量列和全空列..."}}
+                                                    "detail": "有效特征初步筛选：正在检查并移除常量列和全空列..."}}
 
         null_placeholders = [r'^\s*$', r'\(?null\)?', 'null', 'nan']
         for placeholder in null_placeholders:
@@ -92,21 +143,21 @@ class DataPreprocessor:
         if rule_based_removed_cols:
             df_screened.drop(columns=rule_based_removed_cols, inplace=True)
             steps_log.append({
-                "step": "基于规则的有效特征筛选",
+                "step": "基于规则的有效特征初步筛选",
                 "status": "success",
                 "details": "移除常量列和全空列。",
                 "removed_columns": rule_based_removed_cols
             })
 
             yield {"type": "substage_result", "payload": {
-                "stage": current_stage, "substage_title": "基于规则的有效特征筛选",
+                "stage": current_stage, "substage_title": "基于规则的有效特征初步筛选",
                 "data": f"移除了{len(rule_based_removed_cols)}个常量或空列：{rule_based_removed_cols}"
             }}
 
-        # 子任务2: 基于经验知识和需求的有效特征筛选
+        # 子任务2: 基于经验知识和需求的有效特征初步筛选
         detail = "正在基于需求使用经验知识进行特征筛选..."
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
-                                                    "detail": "有效特征筛选：正在基于需求使用经验知识进行特征筛选..."}}
+                                                    "detail": "有效特征初步筛选：正在基于需求使用经验知识进行特征筛选..."}}
 
         # 动态精简知识库信息
         unsuitable_features_docs = self.domain_kb.search("经验意义上不适用作训练字段的特征列", k=1)
@@ -184,7 +235,7 @@ class DataPreprocessor:
 
     def _decide_row_pruning_threshold(self, iter_profile: Dict[str, Any]) -> float:
         """
-        让 LLM 在严格边界内“只选阈值”；失败时回退到启发式。
+        智能体在严格边界内“只选阈值”；失败时回退到启发式。
         """
         system_prompt = get_prompt(
             'preprocessor.row_pruning.system',
@@ -192,15 +243,11 @@ class DataPreprocessor:
         )
 
         user_prompt = f"""
+我的建模需求是：{self.user_request}
 你将基于下面的数据样本清洗画像，**仅选择一个行缺失比例阈值**，超过该阈值的样本行应当删除。
 
 数据样本清洗画像（行分布与Top缺失列摘要）：
 {json.dumps(iter_profile, indent=2, ensure_ascii=False)}
-
-**请输出 JSON，形如：**
-{{"row_drop_threshold": 0.6, "second_pass": false, "reason": "..." }}
-- 只允许阈值 ∈ [0.3, 0.9]，最多保留两位小数。
-- 若需要两次删行（更保守地先大后小），可将 second_pass 设为 true（我会在第二轮再询问你阈值）。
 """
         llm_gen = call_llm(system_prompt, user_prompt, model="ds_v3")
         llm_resp = ""
@@ -216,7 +263,7 @@ class DataPreprocessor:
             print(llm_resp)
             obj = json.loads(llm_resp)
             th = float(obj.get("row_drop_threshold", 0.6))
-            th = max(0.3, min(0.9, round(th, 2)))   # 阈值范围强制约束
+            th = max(0.3, min(0.9, round(th, 2)))  # 阈值范围强制约束
             second = bool(obj.get("second_pass", False))
             return th, second
         except Exception:
@@ -241,83 +288,51 @@ class DataPreprocessor:
         df2 = df.loc[~mask].copy()
         return df2, {"removed": removed, "threshold": threshold}
 
-    def _generate_llm_prompt_for_preprocessing_plan(self, data_profile_str: str, columns_to_process: List[str]) -> \
-            Tuple[str, str]:
-        # 从配置文件获取提示词并格式化
-        system_prompt = get_prompt(
-            'preprocessor.detailed_preprocessing_plan.system',
-            user_request=self.user_request
-        )
-
-        user_prompt = f"""
-现在，请为以下经过有效特征筛选后的数据制定详细的数据预处理计划。
-
-**数据画像:**
-{data_profile_str}
-
-请为以下列制定预处理计划: {json.dumps(columns_to_process)}。
-目标列 '{self.target_metric}' 不应包含在你的计划中。
-请严格按照系统提示中要求的JSON格式（每个特征列对应一个操作列表）输出。
-"""
-        return system_prompt, user_prompt
-
-    def _execute_preprocessing_plan(self, df: pd.DataFrame, plan: Dict[str, List[Dict[str, Any]]]) -> pd.DataFrame:
-        """根据制定的计划，执行预处理步骤"""
+    def _execute_plan(self, df: pd.DataFrame, plan: Dict[str, List[Dict[str, Any]]], stage_name: str) -> pd.DataFrame:
+        """根据制定的计划，按预设顺序执行预处理步骤。"""
         df_processed = df.copy()
-        PROCESSING_ORDER = [
-            "delete_column", "delete_rows_with_missing_in_column",
-            "impute_mean", "impute_median", "impute_most_frequent",
-            "cap_outliers_iqr",
-            "one_hot_encode_column", "label_encode_column", "target_encode_column",
-            "no_action"
-        ]
 
         if not isinstance(plan, dict):
-            error_msg = f"预处理计划格式无效，期望是字典，但得到的是 {type(plan)}。跳过执行。"
-            self.applied_steps.append({"step": "执行数据预处理计划", "status": "failed", "error": error_msg})
+            error_msg = f"预处理计划格式无效（应为字典），跳过执行。计划内容: {plan}"
+            self.applied_steps.append({"step": stage_name, "status": "failed", "error": error_msg})
             return df_processed
 
-        # 按列和操作顺序执行
-        for operation_type in PROCESSING_ORDER:  # 按顺序执行操作类型
-            sorted_columns = sorted(plan.keys())  # 按列名排序，确保确定性
-            for column in sorted_columns:
+        # 按预定义的顺序遍历所有可能的操作
+        for operation_type in self.PROCESSING_ORDER:
+            # 遍历所有列，执行当前类型的操作
+            for column, steps in plan.items():
                 if column not in df_processed.columns:
                     continue
 
-                steps = plan.get(column, [])
                 for step in steps:
                     if step.get("operation") == operation_type:
-                        operation = step.get("operation")
                         params = step.get("params", {})
-                        print(f"处理列'{column}'，操作为'{operation}'")
 
-                        if column == self.target_metric and operation not in ['delete_rows_with_missing_in_column']:
-                            continue
-
-                        step_details = {"column": column, "operation": operation, "params": params, "status": "failed"}
+                        step_details = {"column": column, "operation": operation_type, "params": params,
+                                        "status": "failed"}
                         try:
-                            if operation == "no_action":
-                                step_details["status"] = "no_action"
-                            elif operation in PREPROCESSING_METHODS_MAP:
-                                method_to_call = PREPROCESSING_METHODS_MAP[operation]
-                                if operation == 'target_encode_column':
-                                    params['target_metric_name'] = self.target_metric
-                                result = method_to_call(df_processed, column, **params)  # 执行操作
-                                fitted_obj = None
-                                if isinstance(result, tuple) and len(result) == 2:  # 若返回(数据, 拟合对象)
-                                    df_processed, fitted_obj = result
-                                    if fitted_obj:
-                                        object_key = f"{column}_{operation}"
-                                        self.fitted_objects[object_key] = fitted_obj  # 保存拟合对象（如编码器）
-                                        print(f"已拟合的对象 '{object_key}' 已保存。")
-                                else:
-                                    df_processed = result
-                                step_details["status"] = "success"
+                            method_to_call = PREPROCESSING_METHODS_MAP[operation_type]
+
+                            # 为target_encode注入目标列名
+                            if operation_type == 'target_encode_column':
+                                params['target_metric_name'] = self.target_metric
+
+                            result = method_to_call(df_processed, column, **params)
+
+                            fitted_obj = None
+                            if isinstance(result, tuple) and len(result) == 2:
+                                df_processed, fitted_obj = result
+                                if fitted_obj:
+                                    object_key = f"{column}_{operation_type}"
+                                    self.fitted_objects[object_key] = fitted_obj
                             else:
-                                step_details["error"] = f"Unknown operation: {operation}"
+                                df_processed = result
+
+                            step_details["status"] = "success"
                         except Exception as e:
                             step_details["error"] = str(e)
-                            print(f"错误: 处理列'{column}'，操作'{operation}'失败: {e}")
+                            print(f"错误: 在阶段'{stage_name}'处理列'{column}'，操作'{operation_type}'失败: {e}")
+
                         self.applied_steps.append(step_details)
         return df_processed
 
@@ -367,19 +382,19 @@ class DataPreprocessor:
             self.applied_steps.append({"step": "目标性能列的检视和清洗", "status": "failed", "error": error_msg})
             return pd.DataFrame(), self.applied_steps, self.fitted_objects
 
-        # 阶段2: 有效特征筛选
+        # 阶段2: 有效特征初步筛选
         screening_gen = self._feature_screening(df)
         df_screened, screening_steps = yield from screening_gen
         self.applied_steps.extend(screening_steps)
 
         if df_screened.empty or self.target_metric not in df_screened.columns:
-            err = "有效特征筛选后数据为空或目标列被移除。"
+            err = "有效特征初步筛选后数据为空或目标列被移除。"
             yield {"type": "error", "payload": {"stage": current_stage, "detail": err}}
-            self.applied_steps.append({"step": "有效特征筛选", "status": "failed", "error": err})
+            self.applied_steps.append({"step": "有效特征初步筛选", "status": "failed", "error": err})
             return pd.DataFrame(), self.applied_steps, self.fitted_objects
 
         # 阶段3: 数据样本清洗
-        # 第1轮：行缺失阈值选择与删行（可能1到2次）
+        # 第1轮
         df_iter = df_screened.copy()
 
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
@@ -409,7 +424,7 @@ class DataPreprocessor:
         }}
 
         if second_pass:
-            # 第2轮更保守的删行：重新画像再询问
+            # 第2轮
             iter_profile = generate_iterative_profile(df_iter, target_metric=self.target_metric)
             self.applied_steps.append({"step": "生成数据样本清洗画像#2", "status": "success", "profile": iter_profile})
             yield {"type": "substage_result", "payload": {
@@ -430,73 +445,51 @@ class DataPreprocessor:
                 "data": {"threshold": th2, "removed_rows": meta2["removed"]}
             }}
 
-        # 阶段4: 数据预处理
-        columns_to_process = [col for col in df_iter.columns if col != self.target_metric]
-        if not columns_to_process:
-            return df_iter, self.applied_steps, self.fitted_objects
+        df_current = df_iter.copy()
+        # 阶段4: 缺失值处理
         yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "running", "detail": "正在生成数据画像..."}}
+               "payload": {"stage": current_stage, "status": "running", "detail": "进入缺失值处理阶段..."}}
+        profile_after_cleaning = generate_data_profile(df_current, self.target_metric)
+        # yield {"type": "substage_result", "payload": {"stage": current_stage, "substage_title": "缺失值处理前画像",
+        #                                               "data": profile_after_cleaning}}
 
-        data_profile = generate_data_profile(df_iter, target_metric=self.target_metric)
-        data_profile_str = json.dumps(data_profile, indent=2, ensure_ascii=False)
-        self.applied_steps.append({"step": "生成数据画像", "status": "success"})
-        print("数据画像:", data_profile_str)
-        yield {"type": "substage_result", "payload": {
-            "stage": current_stage, "substage_title": "数据画像",
-            "data": data_profile_str
-        }}
+        sys_prompt = get_prompt('preprocessor.missing_value_plan.system', user_request=self.user_request)
+        user_prompt = f"""请为以下数据画像制定缺失值处理计划。
+**数据画像:**
+{json.dumps(profile_after_cleaning, indent=2, ensure_ascii=False)}"""
 
-        detail = "正在制定数据预处理计划..."
-        yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running", "detail": detail}}
-        system_prompt, user_prompt = self._generate_llm_prompt_for_preprocessing_plan(data_profile_str,
-                                                                                      columns_to_process)
+        missing_plan_gen = self._call_llm_for_plan(sys_prompt, user_prompt, "生成缺失值处理计划")
+        missing_plan = yield from missing_plan_gen
 
-        max_retries = 3
-        llm_plan = None
-        for i in range(max_retries):
-            llm_gen = call_llm(system_prompt, user_prompt, model="ds_v3")
-            llm_response_str = ""
-            while True:
-                try:
-                    chunk = next(llm_gen)
-                    yield chunk
-                except StopIteration as e:
-                    llm_response_str = e.value
-                    break
+        if missing_plan:
+            df_current = self._execute_plan(df_current, missing_plan, "执行缺失值处理计划")
 
-            try:
-                llm_plan = json.loads(llm_response_str)
-                if isinstance(llm_plan, dict):
-                    self.applied_steps.append({"step": "生成数据预处理计划", "status": "success", "plan": llm_plan})
-                    break
-                else:
-                    llm_plan = None
-            except json.JSONDecodeError as e:
-                if i == max_retries - 1:
-                    error_msg = f"智能体响应解析失败: {e}"
-                    self.applied_steps.append(
-                        {"step": "生成数据预处理计划", "status": "failed", "error": error_msg,
-                         "raw_response": llm_response_str})
-                    yield {"type": "error",
-                           "payload": {"stage": current_stage, "detail": error_msg}}
-                    return df_iter, self.applied_steps, self.fitted_objects
+        # 阶段5: 数据精加工 (异常/变换/编码/缩放)
+        yield {"type": "status_update",
+               "payload": {"stage": current_stage, "status": "running", "detail": "进入数据精加工阶段..."}}
+        profile_after_imputation = generate_data_profile(df_current, self.target_metric)
+        # yield {"type": "substage_result", "payload": {"stage": current_stage, "substage_title": "数据精加工前画像",
+        #                                               "data": profile_after_imputation}}
 
-        yield {"type": "substage_result", "payload": {
-            "stage": current_stage, "substage_title": "数据预处理计划",
-            "data": llm_plan
-        }}
+        sys_prompt = get_prompt('preprocessor.final_processing_plan.system', user_request=self.user_request)
+        user_prompt = f"""请为以下数据画像制定精加工计划。
+**用户的原始建模需求**：{self.user_request}
+**数据画像:**
+{json.dumps(profile_after_imputation, indent=2, ensure_ascii=False)}"""
 
-        detail = "正在执行数据预处理计划..."
-        yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running", "detail": detail}}
-        df_processed = self._execute_preprocessing_plan(df_iter.copy(), llm_plan)
+        final_plan_gen = self._call_llm_for_plan(sys_prompt, user_prompt, "生成数据精加工计划")
+        final_plan = yield from final_plan_gen
+
+        if final_plan:
+            df_current = self._execute_plan(df_current, final_plan, "执行数据精加工计划")
 
         # 后处理
         detail = "正在检视数据并进行后处理过程..."
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running", "detail": detail}}
-        final_cols_to_drop = [col for col in df_processed.columns if
-                              df_processed[col].dropna().nunique() <= 1 and col != self.target_metric]
+        final_cols_to_drop = [col for col in df_current.columns if
+                              df_current[col].dropna().nunique() <= 1 and col != self.target_metric]
         if final_cols_to_drop:
-            df_processed = df_processed.drop(columns=final_cols_to_drop)
+            df_current = df_current.drop(columns=final_cols_to_drop)
             yield {"type": "substage_result", "payload": {
                 "stage": current_stage, "substage_title": "去除预处理计划后变成常量的特征",
                 "data": final_cols_to_drop
@@ -508,4 +501,4 @@ class DataPreprocessor:
             "stage": current_stage, "substage_title": "检视后无需进行后处理过程"
         }}
 
-        return df_processed, self.applied_steps, self.fitted_objects
+        return df_current, self.applied_steps, self.fitted_objects

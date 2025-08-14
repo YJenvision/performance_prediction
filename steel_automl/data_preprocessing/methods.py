@@ -1,272 +1,271 @@
+# methods.py
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler, MinMaxScaler, OneHotEncoder, LabelEncoder
-from sklearn.impute import SimpleImputer
 from typing import Any, Dict, Tuple, List, Union
 
+from sklearn.preprocessing import (
+    StandardScaler, MinMaxScaler, OneHotEncoder, LabelEncoder,
+    RobustScaler, PowerTransformer
+)
+from sklearn.impute import SimpleImputer
 import category_encoders as ce
 
 
-# --- 缺失值处理 ---
+# ---------- 缺失值处理 ----------
 def impute_mean(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, None]:
     """使用均值填充指定列的缺失值。"""
-    if column not in df.columns:
-        print(f"警告: 列 '{column}' 不在DataFrame中，无法执行均值填充。")
-        return df, None
+    if column not in df.columns: return df, None
     if df[column].isnull().sum() > 0 and pd.api.types.is_numeric_dtype(df[column]):
         imputer = SimpleImputer(strategy='mean')
-        # 优化: 使用 .ravel() 将输出转为一维数组，保证赋值的稳定性
         df[column] = imputer.fit_transform(df[[column]]).ravel()
-        print(f"列 '{column}' 的缺失值已通过均值填充。")
     return df, None
 
 
 def impute_median(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, None]:
     """使用中位数填充指定列的缺失值。"""
-    if column not in df.columns:
-        print(f"警告: 列 '{column}' 不在DataFrame中，无法执行中位数填充。")
-        return df, None
+    if column not in df.columns: return df, None
     if df[column].isnull().sum() > 0 and pd.api.types.is_numeric_dtype(df[column]):
         imputer = SimpleImputer(strategy='median')
-        # 优化: 使用 .ravel() 将输出转为一维数组
         df[column] = imputer.fit_transform(df[[column]]).ravel()
-        print(f"列 '{column}' 的缺失值已通过中位数填充。")
     return df, None
 
 
 def impute_most_frequent(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, None]:
-    """
-    使用众数填充指定列的缺失值，自适应处理不同数据类型。
+    """使用众数填充指定列的缺失值。"""
+    if column not in df.columns: return df, None
+    if df[column].isnull().sum() == 0: return df, None
 
-    Parameters:
-    df : pd.DataFrame, 输入的DataFrame
-    column : str, 需要填充的列名
-
-    Returns:
-    Tuple[pd.DataFrame, None]
-        返回填充后的DataFrame和None
-    """
-    if column not in df.columns:
-        print(f"警告: 列 '{column}' 不在DataFrame中，无法执行众数填充。")
-        return df, None
-
-    # 检查是否有缺失值
-    if df[column].isnull().sum() == 0:
-        print(f"列 '{column}' 没有缺失值，无需填充。")
-        return df, None
-
-    # 记录原始数据类型
+    # 保持原始数据类型
     original_dtype = df[column].dtype
-    print(f"列 '{column}' 的原始数据类型: {original_dtype}")
 
-    # 根据数据类型选择处理策略
-    if pd.api.types.is_numeric_dtype(df[column]):
-        # 数值类型处理
-        print(f"处理数值类型列 '{column}'...")
+    # 对数值或类别型数据统一使用SimpleImputer，更稳健
+    imputer = SimpleImputer(strategy='most_frequent')
+    df[column] = imputer.fit_transform(df[[column]]).ravel()
 
-        # 对于数值类型，可以直接使用SimpleImputer
-        imputer = SimpleImputer(strategy='most_frequent')
-        df[column] = imputer.fit_transform(df[[column]]).ravel()
+    # 尝试恢复原始类型，失败则忽略
+    try:
+        df[column] = df[column].astype(original_dtype)
+    except (ValueError, TypeError):
+        pass
 
-        # 尝试保持原始数据类型
-        try:
-            if original_dtype in ['int8', 'int16', 'int32', 'int64']:
-                # 整数类型
-                df[column] = df[column].astype(original_dtype)
-            elif original_dtype in ['float16', 'float32', 'float64']:
-                # 浮点类型
-                df[column] = df[column].astype(original_dtype)
-            else:
-                # 其他数值类型，保持float64
-                df[column] = df[column].astype('float64')
-        except (ValueError, OverflowError) as e:
-            print(f"警告: 无法将填充后的数据转换回原始类型 {original_dtype}，保持当前类型。错误: {e}")
-
-    elif pd.api.types.is_categorical_dtype(df[column]):
-        # 分类类型处理
-        print(f"处理分类类型列 '{column}'...")
-
-        # 获取众数
-        mode_value = df[column].mode()
-        if len(mode_value) > 0:
-            fill_value = mode_value.iloc[0]
-            df[column] = df[column].fillna(fill_value)
-        else:
-            print(f"警告: 列 '{column}' 无法确定众数，跳过填充。")
-            return df, None
-
-    else:
-        # 对象类型（字符串等）处理
-        print(f"处理对象类型列 '{column}'...")
-
-        # 先尝试使用pandas的众数填充，这样可以保持原始类型
-        mode_values = df[column].mode()
-        if len(mode_values) > 0:
-            fill_value = mode_values.iloc[0]
-            df[column] = df[column].fillna(fill_value)
-        else:
-            # 如果pandas众数计算失败，使用SimpleImputer
-            print(f"使用SimpleImputer处理列 '{column}'...")
-            imputer = SimpleImputer(strategy='most_frequent')
-            df[column] = imputer.fit_transform(df[[column]].astype(object)).ravel()
-
-    print(f"列 '{column}' 的缺失值已通过众数填充完成。填充后数据类型: {df[column].dtype}")
     return df, None
 
 
 def delete_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, None]:
-    """删除指定列。"""
+    """删除指定的列。"""
     if column in df.columns:
         df = df.drop(columns=[column])
-        print(f"列 '{column}' 已被删除。")
-    else:
-        print(f"警告: 列 '{column}' 不在DataFrame中，无法删除。")
     return df, None
 
 
 def delete_rows_with_missing_in_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, None]:
-    """删除在指定列中包含缺失值的行。"""
+    """删除在指定列有缺失值的行。"""
     if column in df.columns:
-        original_len = len(df)
         df = df.dropna(subset=[column])
-        print(f"在列 '{column}' 中包含缺失值的 {original_len - len(df)} 行已被删除。")
-    else:
-        print(f"警告: 列 '{column}' 不在DataFrame中，无法基于此列删除行。")
     return df, None
 
 
-# --- 数据缩放 ---
+def add_missing_indicator(df: pd.DataFrame, column: str, suffix: str = "_ismissing") -> Tuple[pd.DataFrame, None]:
+    """为指定列添加一个缺失指示器特征。"""
+    if column in df.columns:
+        df[f"{column}{suffix}"] = df[column].isna().astype(int)
+    return df, None
+
+
+def impute_auto(df: pd.DataFrame, column: str, skew_threshold: float = 1.0) -> Tuple[pd.DataFrame, None]:
+    """
+    自适应填充：
+    通过偏度值（skewness）选择填充策略符合统计学原理：
+    当数据分布接近对称（偏度绝对值 < 1.0）时，均值是更有效的集中趋势度量
+    当数据显著偏斜（偏度绝对值 ≥ 1.0）时，中位数对极端值更稳健
+    - 对数值列，根据偏度自动选择均值或中位数。
+    - 对类别列，使用众数。
+    """
+    if column not in df.columns or df[column].isnull().sum() == 0:
+        return df, None
+
+    ser = df[column]
+    if pd.api.types.is_numeric_dtype(ser):
+        # 根据偏度选择均/中位数
+        skew_val = ser.dropna().skew()
+        if abs(float(skew_val)) >= skew_threshold:
+            return impute_median(df, column)
+        return impute_mean(df, column)
+
+    # 类别/二元 -> 众数
+    return impute_most_frequent(df, column)
+
+
+# ---------- 缩放与变换 ----------
 def standard_scale_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, StandardScaler]:
-    """对指定数值列进行标准化缩放。"""
+    """对指定列进行标准化。"""
     scaler = StandardScaler()
-    if column not in df.columns:
-        print(f"警告: 列 '{column}' 不在DataFrame中，无法执行标准化。")
-        return df, scaler
-    if pd.api.types.is_numeric_dtype(df[column]):
+    if column in df.columns and pd.api.types.is_numeric_dtype(df[column]):
         df[column] = scaler.fit_transform(df[[column]]).ravel()
-        print(f"列 '{column}' 已进行标准化缩放。")
-    else:
-        print(f"警告: 列 '{column}' 不是数值类型，无法执行标准化。")
     return df, scaler
 
 
 def min_max_scale_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, MinMaxScaler]:
-    """对指定数值列进行最小-最大缩放。"""
+    """对指定列进行归一化。"""
     scaler = MinMaxScaler()
-    if column not in df.columns:
-        print(f"警告: 列 '{column}' 不在DataFrame中，无法执行MinMax缩放。")
-        return df, scaler
-    if pd.api.types.is_numeric_dtype(df[column]):
+    if column in df.columns and pd.api.types.is_numeric_dtype(df[column]):
         df[column] = scaler.fit_transform(df[[column]]).ravel()
-        print(f"列 '{column}' 已进行MinMax缩放。")
-    else:
-        print(f"警告: 列 '{column}' 不是数值类型，无法执行MinMax缩放。")
     return df, scaler
 
 
-# --- 类别特征编码 ---
-def one_hot_encode_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, OneHotEncoder]:
-    """对指定类别列进行独热编码。"""
-    encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
-    if column not in df.columns:
-        print(f"警告: 列 '{column}' 不在DataFrame中，无法执行独热编码。")
-        return df, encoder
+def robust_scale_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, RobustScaler]:
+    """对指定列进行鲁棒缩放，对离群值不敏感。"""
+    scaler = RobustScaler()
+    if column in df.columns and pd.api.types.is_numeric_dtype(df[column]):
+        df[column] = scaler.fit_transform(df[[column]]).ravel()
+    return df, scaler
 
-    try:
-        # 确保处理的是二维数组
-        encoded_data = encoder.fit_transform(df[[column]])
-        encoded_df = pd.DataFrame(encoded_data, columns=encoder.get_feature_names_out([column]), index=df.index)
+
+def yeo_johnson_transform_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, PowerTransformer]:
+    """对指定列进行Yeo-Johnson变换，使其更接近正态分布。"""
+    pt = PowerTransformer(method='yeo-johnson', standardize=False)
+    if column in df.columns and pd.api.types.is_numeric_dtype(df[column]):
+        # 增加稳定性：确保数据为正数，如果需要
+        col_data = df[[column]].astype(float)
+        if (col_data <= 0).any().any():
+            # Yeo-Johnson可以处理0和负值，此检查是为其他可能变换保留
+            pass
+        try:
+            df[column] = pt.fit_transform(col_data).ravel()
+        except Exception:
+            # 若变换失败（例如，在某些极端分布下），则跳过，不影响管道
+            pass
+    return df, pt
+
+
+# ---------- 类别编码 ----------
+def one_hot_encode_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, OneHotEncoder]:
+    """对指定列进行独热编码。"""
+    encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore', dtype=int)
+    if column in df.columns:
+        encoded = encoder.fit_transform(df[[column]])
+        encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out([column]), index=df.index)
         df = df.drop(columns=[column])
         df = pd.concat([df, encoded_df], axis=1)
-        print(f"列 '{column}' 已进行独热编码，生成了 {len(encoded_df.columns)} 个新特征。")
-    except Exception as e:
-        print(f"对列 '{column}' 进行独热编码失败: {e}")
     return df, encoder
 
 
 def label_encode_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, LabelEncoder]:
-    """对指定类别列进行标签编码。"""
+    """对指定列进行标签编码。"""
     encoder = LabelEncoder()
-    if column not in df.columns:
-        print(f"警告: 列 '{column}' 不在DataFrame中，无法执行标签编码。")
-        return df, encoder
-
-    # LabelEncoder 不能直接处理NaN，将其转换为字符串'NaN'作为一个独立的类别
-    if df[column].isnull().any():
-        df[column] = df[column].astype(str)
-
-    try:
-        df[column] = encoder.fit_transform(df[column])
-        print(f"列 '{column}' 已进行标签编码。")
-    except Exception as e:
-        print(f"对列 '{column}' 进行标签编码失败: {e}")
-
+    if column in df.columns:
+        # 填充NA以进行编码，或将其视为一个单独的类别
+        series = df[column]
+        if series.isnull().any():
+            series = series.astype(str).fillna('__NULL__')
+        df[column] = encoder.fit_transform(series)
     return df, encoder
 
 
 def target_encode_column(df: pd.DataFrame, column: str, target_metric_name: str) -> Tuple[
     pd.DataFrame, ce.TargetEncoder]:
-    """对指定类别列进行目标编码。"""
-    # handle_unknown='value' 和 smoothing 参数可以增加编码的稳定性
+    """对指定列进行目标编码。"""
     encoder = ce.TargetEncoder(cols=[column], handle_unknown='value', smoothing=5)
-    if column not in df.columns:
-        print(f"警告: 列 '{column}' 不在DataFrame中，无法执行目标编码。")
-        return df, encoder
-    if target_metric_name not in df.columns:
-        print(f"警告: 目标列 '{target_metric_name}' 不在DataFrame中，无法执行目标编码。")
-        return df, encoder
-
-    try:
-        # TargetEncoder可以自动处理NaN
+    if column in df.columns and target_metric_name in df.columns:
         df[column] = encoder.fit_transform(X=df[column], y=df[target_metric_name])
-        print(f"列 '{column}' 已进行目标编码。")
-    except Exception as e:
-        print(f"对列 '{column}' 进行目标编码失败: {e}")
-
     return df, encoder
 
 
-# --- 离群值处理 (初步) ---
+def frequency_encode_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, Dict[str, float]]:
+    """对指定列进行频率编码。"""
+    if column not in df.columns: return df, {}
+    # dropna=False 将NaN也视为一个可计数的类别
+    counts = df[column].value_counts(normalize=True, dropna=False)
+    freq_map = counts.to_dict()
+    df[column] = df[column].map(freq_map)
+    return df, freq_map
+
+
+def rare_label_collapse(df: pd.DataFrame, column: str, min_freq: float = 0.01, rare_label: str = "__RARE__") -> Tuple[
+    pd.DataFrame, Dict[str, str]]:
+    """将指定列中的稀有类别归并为一个标签。"""
+    if column not in df.columns: return df, {}
+    # 同样，将NaN视为一个类别进行判断
+    vc = df[column].value_counts(normalize=True, dropna=False)
+    rare_categories = vc[vc < min_freq].index
+
+    mapping = {cat: rare_label for cat in rare_categories}
+
+    if rare_categories.any():
+        df[column] = df[column].replace(mapping)
+
+    return df, mapping
+
+
+# ---------- 异常值处理 ----------
 def cap_outliers_iqr(df: pd.DataFrame, column: str, factor: float = 1.5) -> Tuple[pd.DataFrame, None]:
-    """使用IQR方法对指定列的离群值进行封顶处理。"""
+    """使用IQR规则对指定列的离群值进行封顶。"""
     if column not in df.columns or not pd.api.types.is_numeric_dtype(df[column]):
-        print(f"警告: 列 '{column}' 无效或非数值，无法处理离群值。")
         return df, None
 
-    Q1 = df[column].quantile(0.25)
-    Q3 = df[column].quantile(0.75)
+    col_data = df[column].dropna()
+    if col_data.empty:
+        return df, None
+
+    Q1 = col_data.quantile(0.25)
+    Q3 = col_data.quantile(0.75)
     IQR = Q3 - Q1
+
+    if IQR == 0:  # 如果IQR为0，则不进行处理
+        return df, None
+
     lower_bound = Q1 - factor * IQR
     upper_bound = Q3 + factor * IQR
 
-    original_sum_outliers = ((df[column] < lower_bound) | (df[column] > upper_bound)).sum()
-    if original_sum_outliers > 0:
-        df[column] = np.where(df[column] < lower_bound, lower_bound, df[column])
-        df[column] = np.where(df[column] > upper_bound, upper_bound, df[column])
-        print(f"列 '{column}' 的离群值已使用IQR方法进行封顶处理。检测到并处理了 {original_sum_outliers} 个离群点。")
-    else:
-        print(f"列 '{column}' 未检测到明显离群值 (基于IQR factor={factor})。")
+    df[column] = df[column].clip(lower_bound, upper_bound)
     return df, None
 
 
-# 方法映射表，方便LLM选择和程序调用
+def winsorize_by_quantile(df: pd.DataFrame, column: str, lower_q: float = 0.01, upper_q: float = 0.99) -> Tuple[
+    pd.DataFrame, None]:
+    """使用分位数对指定列进行缩尾处理。"""
+    if column not in df.columns or not pd.api.types.is_numeric_dtype(df[column]):
+        return df, None
+
+    col_data = df[column].dropna()
+    if col_data.empty:
+        return df, None
+
+    lower_limit = col_data.quantile(lower_q)
+    upper_limit = col_data.quantile(upper_q)
+
+    df[column] = df[column].clip(lower_limit, upper_limit)
+    return df, None
+
+
+# ---------- 方法映射字典 ----------
 PREPROCESSING_METHODS_MAP = {
     # 缺失值处理
     "impute_mean": impute_mean,
     "impute_median": impute_median,
     "impute_most_frequent": impute_most_frequent,
+    "impute_auto": impute_auto,
+    "add_missing_indicator": add_missing_indicator,
     "delete_column": delete_column,
     "delete_rows_with_missing_in_column": delete_rows_with_missing_in_column,
 
-    # 数据缩放
+    # 缩放/变换
     "standard_scale_column": standard_scale_column,
     "min_max_scale_column": min_max_scale_column,
+    "robust_scale_column": robust_scale_column,
+    "yeo_johnson_transform_column": yeo_johnson_transform_column,
 
-    # 类别特征编码
+    # 类别编码
+    "rare_label_collapse": rare_label_collapse,
     "one_hot_encode_column": one_hot_encode_column,
     "label_encode_column": label_encode_column,
+    "frequency_encode_column": frequency_encode_column,
     "target_encode_column": target_encode_column,
 
-    # 离群值处理
+    # 异常值处理
     "cap_outliers_iqr": cap_outliers_iqr,
+    "winsorize_by_quantile": winsorize_by_quantile,
+
+    # 空操作
+    "no_action": lambda df, column, **k: (df, None),
 }

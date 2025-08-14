@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 # 定义一个阈值，用于判断是否为低基数类别特征。
 # 如果特征的唯一值数量低于或等于此阈值，画像中将列出具体的唯一值。
@@ -14,7 +14,7 @@ def generate_data_profile(df: pd.DataFrame, target_metric: str = None) -> Dict[s
     这个最终版本的画像有以下核心改进：
     1.  **语义化类型（Semantic Types）**: 将Pandas的物理类型抽象为逻辑类型（'numeric', 'categorical', 'binary', 'datetime', 'empty'），为智能体提供更直接的决策依据。
     2.  **决策导向的统计信息**:
-        - 对数值型特征，提供关键的统计摘要（均值、中位数、标准差等），帮助智能体选择最合适的缺失值填充策略。
+        - 对数值型特征，提供关键的统计摘要，并新增 **偏度(skewness)** 和 **峰度(kurtosis)**，为变换和异常值处理提供关键依据。
         - 对类别型特征，提供基数（cardinality），并对低基数特征直接展示其唯一值。
     3.  **极致精简**: 画像中不包含无用信息，有效缩短输入给智能体的上下文长度。
     4.  **逻辑清晰**: 数值型（int, float）将始终被视为 'numeric'，不再根据基数转换为 'categorical'，使类型判断更加一致和稳健。
@@ -57,9 +57,7 @@ def generate_data_profile(df: pd.DataFrame, target_metric: str = None) -> Dict[s
         nunique = non_null_data.nunique()
 
         # 3. 根据数据类型进行针对性画像
-        # 检查是否为数值型 (并排除布尔型)
         if pd.api.types.is_numeric_dtype(non_null_data) and not pd.api.types.is_bool_dtype(non_null_data):
-            # 所有整型和浮点型都视为 'numeric'
             col_profile['type'] = 'numeric'
             stats = non_null_data.describe()
             col_profile['stats'] = {
@@ -68,29 +66,26 @@ def generate_data_profile(df: pd.DataFrame, target_metric: str = None) -> Dict[s
                 'min': round(stats.get('min', 0), 3),
                 'median': round(non_null_data.median(), 3),
                 'max': round(stats.get('max', 0), 3),
+                'skewness': round(non_null_data.skew(), 3),  # 新增偏度
+                'kurtosis': round(non_null_data.kurt(), 3)  # 新增峰度
             }
 
-            # 离群值检测 (基于IQR)
             q1 = non_null_data.quantile(0.25)
             q3 = non_null_data.quantile(0.75)
             iqr = q3 - q1
-            # 仅在IQR大于0时计算，避免除零错误或无效边界
             if iqr > 0:
                 lower_bound = q1 - 1.5 * iqr
                 upper_bound = q3 + 1.5 * iqr
                 outliers = non_null_data[(non_null_data < lower_bound) | (non_null_data > upper_bound)]
-                # 仅在存在离群值时报告
                 if not outliers.empty:
                     outlier_percentage = len(outliers) / len(non_null_data) * 100
                     col_profile['outlier_percentage'] = round(outlier_percentage, 2)
 
-        # 检查是否为布尔型或二元特征
         elif pd.api.types.is_bool_dtype(non_null_data) or nunique == 2:
             col_profile['type'] = 'binary'
             col_profile['cardinality'] = 2
             col_profile['unique_values'] = [str(v) for v in non_null_data.unique()]
 
-        # 检查是否为日期时间型
         elif pd.api.types.is_datetime64_any_dtype(non_null_data):
             col_profile['type'] = 'datetime'
             col_profile['cardinality'] = nunique
@@ -99,27 +94,20 @@ def generate_data_profile(df: pd.DataFrame, target_metric: str = None) -> Dict[s
                     'min': non_null_data.min().isoformat(),
                     'max': non_null_data.max().isoformat()
                 }
-            except TypeError:  # 兼容带时区的时间
+            except TypeError:
                 col_profile['stats'] = {
                     'min': str(non_null_data.min()),
                     'max': str(non_null_data.max())
                 }
-
-        # 其他所有情况都视为类别型
         else:
             col_profile['type'] = 'categorical'
             col_profile['cardinality'] = nunique
-            # 仅在低基数时展示唯一值，以节省空间
             if nunique <= LOW_CARDINALITY_THRESHOLD:
                 col_profile['unique_values'] = [str(v) for v in non_null_data.unique()]
 
         profile["column_profiles"][col_name] = col_profile
 
     return profile
-
-
-import math
-from typing import Optional
 
 
 def _percent(x: float) -> float:
@@ -134,17 +122,11 @@ def generate_iterative_profile(
         topk_missing_cols: int = 40
 ) -> Dict[str, Any]:
     """
-    为数据样本清洗生成一个轻量级的画像。
-
-    此画像的核心是提供决策所需的最关键信息，以指导智能体进行数据清洗，主要包含：
-    1.  **数据摘要**: 提供行数、列数和全局缺失率的宏观视图。
-    2.  **行缺失分布**: 详细描述行级别的缺失情况，包括均值、中位数、高分位数和在不同阈值下的缺失行数，为删除高缺失率行提供依据。
-    3.  **特征缺失率详情**: 按缺失率降序展示Top-N的特征及其缺失率，帮助快速定位问题最严重的列。
+    为数据样本清洗生成一个轻量级的画像 (此函数与您提供的版本基本一致，保持不变)。
     """
     features = [c for c in df.columns if c != target_metric]
     n_rows, n_cols = len(df), len(features) if features else 0
 
-    # 处理空DataFrame的边界情况
     if n_rows == 0 or n_cols == 0:
         return {
             "数据摘要": {"数据总行数": n_rows, "特征列数": n_cols, "全局缺失率(%)": 0.0},
@@ -156,25 +138,20 @@ def generate_iterative_profile(
             "特征缺失率(%)详情(降序)": {}
         }
 
-    # 计算行和列的缺失率
     miss_mat = df[features].isna()
     row_missing_ratio = miss_mat.mean(axis=1).astype(float)
     col_missing_pct = miss_mat.mean(axis=0).apply(_percent).to_dict()
 
-    # 获取缺失率最高的Top-N列
     top_cols = sorted(col_missing_pct.items(), key=lambda kv: kv[1], reverse=True)[:topk_missing_cols]
 
-    # 计算在不同缺失率阈值之上的行数
     rows_above = {
         str(th): int((row_missing_ratio > th).sum())
         for th in candidate_thresholds
     }
 
     def q(p):
-        """用于安全计算分位数的辅助函数。"""
         return float(row_missing_ratio.quantile(p)) if not row_missing_ratio.empty else 0.0
 
-    # 构建最终的画像字典
     profile = {
         "数据摘要": {
             "数据总行数": n_rows,
