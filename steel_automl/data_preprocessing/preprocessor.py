@@ -384,7 +384,7 @@ class DataPreprocessor:
 
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
                                                     "detail": "正在生成数据样本清洗画像..."}}
-        iter_profile = generate_iterative_profile(df_iter, target_metric=self.target_metric, prev_profile=None)
+        iter_profile = generate_iterative_profile(df_iter, target_metric=self.target_metric)
         self.applied_steps.append({"step": "生成数据样本清洗画像", "status": "success", "profile": iter_profile})
         yield {"type": "substage_result", "payload": {
             "stage": current_stage, "substage_title": "数据样本清洗画像", "data": iter_profile
@@ -410,8 +410,7 @@ class DataPreprocessor:
 
         if second_pass:
             # 第2轮更保守的删行：重新画像再询问
-            iter_profile = generate_iterative_profile(df_iter, target_metric=self.target_metric,
-                                                      prev_profile=iter_profile)
+            iter_profile = generate_iterative_profile(df_iter, target_metric=self.target_metric)
             self.applied_steps.append({"step": "生成数据样本清洗画像#2", "status": "success", "profile": iter_profile})
             yield {"type": "substage_result", "payload": {
                 "stage": current_stage, "substage_title": "数据样本清洗画像#2", "data": iter_profile
