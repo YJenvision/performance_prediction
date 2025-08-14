@@ -1,0 +1,20 @@
+[
+  {
+    "text_for_embedding": "对于小样本且特征维度不高的钢材性能预测问题，随机森林通常表现稳健且不易过拟合。",
+    "metadata": {
+      "recommended_model": "RandomForest",
+      "sample_size": "middle",
+      "feature_dim": "low_to_medium",
+      "pros": "robust, less_overfitting"
+    }
+  },
+  {
+    "text_for_embedding": "当数据量较大且特征间存在复杂非线性关系时，XGBoost配合适当的超参数调优往往能获得最佳的预测精度。",
+    "metadata": {
+      "recommended_model": "XGBoost",
+      "sample_size": "large",
+      "feature_relations": "complex_nonlinear",
+      "notes": "requires_careful_tuning"
+    }
+  }
+]
