@@ -15,6 +15,8 @@ from config import PREPROCESSING_KB_NAME, PROFESSIONAL_KNOWLEDGE_KB_NAME
 from steel_automl.data_preprocessing.methods import PREPROCESSING_METHODS_MAP
 from steel_automl.utils.data_utils import generate_data_profile, generate_iterative_profile
 from prompts.prompt_manager import get_prompt
+# 导入用于保存数据帧的工具函数
+from steel_automl.performance_model_builder_utils import _save_dataframe
 
 
 class DataPreprocessor:
@@ -336,8 +338,8 @@ class DataPreprocessor:
                         self.applied_steps.append(step_details)
         return df_processed
 
-    def preprocess_data(self, df: pd.DataFrame) -> Generator[
-        Dict[str, Any], None, Tuple[pd.DataFrame, List[Dict[str, Any]], Dict[str, Any]]]:
+    def preprocess_data(self, df: pd.DataFrame, filename_prefix: str, run_specific_dir: str) -> Generator[
+        Dict[str, Any], None, Tuple[pd.DataFrame, List[Dict[str, Any]], Dict[str, Any], str]]:
         """数据探索与预处理主流程，生成器。"""
         self.applied_steps = []
         self.fitted_objects = {}
@@ -370,31 +372,33 @@ class DataPreprocessor:
                 "stage": current_stage, "substage_title": "目标性能列的检视和清洗",
                 "data": f"移除了 {dropped_na_count} 个{self.target_metric}为空值的行和 {dropped_invalid_count} 个{self.target_metric}为无效值（0）的行。剩余 {len(df)} 行。"}
                    }
-
-        yield {"type": "substage_result",
-               "payload": {"stage": current_stage, "substage_title": "目标性能列的检视和清洗",
-                           "data": f"目标性能列'{self.target_metric}'无需清洗。列值均有效。"}
-               }
+        else:
+            yield {"type": "substage_result",
+                   "payload": {"stage": current_stage, "substage_title": "目标性能列的检视和清洗",
+                               "data": f"目标性能列'{self.target_metric}'无需清洗。列值均有效。"}
+                   }
 
         if df.empty:
             error_msg = "清洗目标性能列后，数据集为空。预处理中止。"
             yield {"type": "error", "payload": {"stage": current_stage, "detail": error_msg}}
             self.applied_steps.append({"step": "目标性能列的检视和清洗", "status": "failed", "error": error_msg})
-            return pd.DataFrame(), self.applied_steps, self.fitted_objects
+            return pd.DataFrame(), self.applied_steps, self.fitted_objects, ""
 
         # 阶段2: 有效特征初步筛选
         screening_gen = self._feature_screening(df)
         df_screened, screening_steps = yield from screening_gen
         self.applied_steps.extend(screening_steps)
 
+        # 保存经过有效特征初步筛选后的数据集
+        _save_dataframe(df_screened, "经过有效特征初步筛选后的数据集#2", filename_prefix, run_specific_dir)
+
         if df_screened.empty or self.target_metric not in df_screened.columns:
             err = "有效特征初步筛选后数据为空或目标列被移除。"
             yield {"type": "error", "payload": {"stage": current_stage, "detail": err}}
             self.applied_steps.append({"step": "有效特征初步筛选", "status": "failed", "error": err})
-            return pd.DataFrame(), self.applied_steps, self.fitted_objects
+            return pd.DataFrame(), self.applied_steps, self.fitted_objects, ""
 
         # 阶段3: 数据样本清洗
-        # 第1轮
         df_iter = df_screened.copy()
 
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
@@ -424,7 +428,6 @@ class DataPreprocessor:
         }}
 
         if second_pass:
-            # 第2轮
             iter_profile = generate_iterative_profile(df_iter, target_metric=self.target_metric)
             self.applied_steps.append({"step": "生成数据样本清洗画像#2", "status": "success", "profile": iter_profile})
             yield {"type": "substage_result", "payload": {
@@ -446,12 +449,14 @@ class DataPreprocessor:
             }}
 
         df_current = df_iter.copy()
+
+        # 保存经过数据样本清洗后的数据集
+        _save_dataframe(df_current, "经过数据样本清洗后的数据集#3", filename_prefix, run_specific_dir)
+
         # 阶段4: 缺失值处理
         yield {"type": "status_update",
                "payload": {"stage": current_stage, "status": "running", "detail": "进入缺失值处理阶段..."}}
         profile_after_cleaning = generate_data_profile(df_current, self.target_metric)
-        # yield {"type": "substage_result", "payload": {"stage": current_stage, "substage_title": "缺失值处理前画像",
-        #                                               "data": profile_after_cleaning}}
 
         sys_prompt = get_prompt('preprocessor.missing_value_plan.system', user_request=self.user_request)
         user_prompt = f"""请为以下数据画像制定缺失值处理计划。
@@ -464,12 +469,13 @@ class DataPreprocessor:
         if missing_plan:
             df_current = self._execute_plan(df_current, missing_plan, "执行缺失值处理计划")
 
+        # 保存经过缺失值处理后的数据集
+        _save_dataframe(df_current, "经过缺失值处理后的数据集#4", filename_prefix, run_specific_dir)
+
         # 阶段5: 数据精加工 (异常/变换/编码/缩放)
         yield {"type": "status_update",
                "payload": {"stage": current_stage, "status": "running", "detail": "进入数据精加工阶段..."}}
         profile_after_imputation = generate_data_profile(df_current, self.target_metric)
-        # yield {"type": "substage_result", "payload": {"stage": current_stage, "substage_title": "数据精加工前画像",
-        #                                               "data": profile_after_imputation}}
 
         sys_prompt = get_prompt('preprocessor.final_processing_plan.system', user_request=self.user_request)
         user_prompt = f"""请为以下数据画像制定精加工计划。
@@ -496,9 +502,12 @@ class DataPreprocessor:
             }}
             self.applied_steps.append(
                 {"step": "去除预处理计划后变成常量的特征", "status": "success", "removed_columns": final_cols_to_drop})
+        else:
+            yield {"type": "substage_result", "payload": {
+                "stage": current_stage, "substage_title": "检视后无需进行后处理过程"
+            }}
 
-        yield {"type": "substage_result", "payload": {
-            "stage": current_stage, "substage_title": "检视后无需进行后处理过程"
-        }}
+        # 保存最终预处理后的数据集
+        final_data_path = _save_dataframe(df_current, "经过数据预处理后的数据集#5", filename_prefix, run_specific_dir)
 
-        return df_current, self.applied_steps, self.fitted_objects
+        return df_current, self.applied_steps, self.fitted_objects, final_data_path

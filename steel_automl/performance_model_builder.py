@@ -125,7 +125,7 @@ def performanceModelBuilder(
                 yield {"type": "error", "payload": {"stage": current_stage,
                                                     "detail": f"按时间列 'REC_REVISE_TIME' 排序时失败: {e}"}}
 
-        _save_dataframe(raw_data, "原始数据集", filename_prefix, run_specific_dir)
+        _save_dataframe(raw_data, "原始数据集#1", filename_prefix, run_specific_dir)
         pipeline_recorder.add_stage(current_stage, "success", {"sql_query": sql_query, "num_rows": len(raw_data)})
 
         yield {"type": "status_update",
@@ -141,7 +141,8 @@ def performanceModelBuilder(
         current_stage = "数据探索与预处理"
 
         preprocessor = DataPreprocessor(user_request=user_request, target_metric=target_metric)
-        preprocess_generator = preprocessor.preprocess_data(raw_data.copy())
+        # 修改点：调用预处理器时传入文件名和路径参数
+        preprocess_generator = preprocessor.preprocess_data(raw_data.copy(), filename_prefix, run_specific_dir)
 
         returned_value, has_failed = yield from _consume_sub_generator(preprocess_generator)
 
@@ -149,20 +150,22 @@ def performanceModelBuilder(
             pipeline_recorder.add_stage(current_stage, "failed", {"details": "数据探索与预处理流程因错误中断。"})
             pipeline_recorder.set_final_status("failed")
             return
+        # 修改点：更新返回值的解包逻辑
+        df_processed, preprocessing_steps, fitted_preproc_objects, preprocessed_data_path = returned_value
 
-        df_processed, preprocessing_steps, fitted_preproc_objects = returned_value
-
-        preprocessed_data_path = _save_dataframe(df_processed, "经过有效特征筛选和预处理后的数据集", filename_prefix,
-                                                 run_specific_dir)
         preproc_artifacts = {
             "fitted_objects_keys": list(fitted_preproc_objects.keys()),
             "preprocessed_data_path": preprocessed_data_path
         }
 
-        saved_preproc_path = _save_fitted_objects(fitted_preproc_objects, filename_prefix, run_specific_dir,
-                                                  "preprocessors")
-        if saved_preproc_path:
-            preproc_artifacts["fitted_preprocessors_path"] = saved_preproc_path
+        # 这里的 'fitted_preproc_objects' 是一个包含了所有预处理阶段（缺失值填充、变换、编码、缩放等）的已拟合转换器（fitters）的字典。
+        # 将这个字典作为一个整体保存，是确保模型部署时能够重现完全相同的预处理流程的最佳实践。
+        # 文件将保存在指定的 'preprocessors' 文件夹内。
+        if fitted_preproc_objects:
+            saved_preproc_path = _save_fitted_objects(fitted_preproc_objects, filename_prefix, run_specific_dir,
+                                                      "preprocessors")
+            if saved_preproc_path:
+                preproc_artifacts["fitted_preprocessors_path"] = saved_preproc_path
 
         critical_preprocessing_failed = False
 
@@ -214,7 +217,7 @@ def performanceModelBuilder(
 
         df_engineered, fe_steps, fitted_fe_objects = returned_value
 
-        engineered_data_path = _save_dataframe(df_engineered, "经过特征构造后的数据集", filename_prefix,
+        engineered_data_path = _save_dataframe(df_engineered, "经过特征构造后的数据集#6", filename_prefix,
                                                run_specific_dir)
 
         fe_artifacts = {
@@ -222,9 +225,11 @@ def performanceModelBuilder(
             "engineered_data_path": engineered_data_path
         }
 
-        saved_fe_path = _save_fitted_objects(fitted_fe_objects, filename_prefix, run_specific_dir, "feature_generators")
-        if saved_fe_path:
-            fe_artifacts["fitted_feature_generators_path"] = saved_fe_path
+        if fitted_fe_objects:
+            saved_fe_path = _save_fitted_objects(fitted_fe_objects, filename_prefix, run_specific_dir,
+                                                 "feature_generators")
+            if saved_fe_path:
+                fe_artifacts["fitted_feature_generators_path"] = saved_fe_path
 
         if df_engineered.empty and not df_processed.empty:
             yield {"type": "error", "payload": {"stage": current_stage, "detail": "特征构造后数据集为空，流程中止。"}}
