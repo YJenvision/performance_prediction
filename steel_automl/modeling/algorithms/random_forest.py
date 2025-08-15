@@ -90,7 +90,7 @@ class RandomForestModel:
             else:
                 search_cv = None
                 # 优先使用传入的cv对象，如果没有则回退到固定的折数
-                cv_strategy = hpo_config.get("cv", 3)
+                cv_strategy = hpo_config.get("cv", 5)
                 scoring = hpo_config.get("scoring_metric", 'neg_mean_squared_error')
                 n_iter = hpo_config.get("n_iter", 30)
 

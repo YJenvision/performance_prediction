@@ -87,7 +87,7 @@ class FeatureGenerator:
 
             yield {"type": "status_update", "payload": {
                 "stage": current_stage, "status": "running",
-                "detail": f"执行计划 {i + 1}/{len(plan)}: {operation}"
+                "detail": f"执行特征构造计划 {i + 1}/{len(plan)}: {operation}"
             }}
 
             try:
@@ -202,10 +202,6 @@ class FeatureGenerator:
             }}
 
         else:
-            yield {"type": "status_update", "payload": {
-                "stage": current_stage, "status": "running",
-                "detail": "正在执行特征构造计划..."
-            }}
             execution_generator = self._execute_feature_engineering_plan(df, feature_engineering_plan)
             df = yield from execution_generator
 

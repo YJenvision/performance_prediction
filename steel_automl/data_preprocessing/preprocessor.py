@@ -338,7 +338,7 @@ class DataPreprocessor:
                         self.applied_steps.append(step_details)
         return df_processed
 
-    def preprocess_data(self, df: pd.DataFrame, filename_prefix: str, run_specific_dir: str) -> Generator[
+    def preprocess_data(self, df: pd.DataFrame, run_specific_dir: str) -> Generator[
         Dict[str, Any], None, Tuple[pd.DataFrame, List[Dict[str, Any]], Dict[str, Any], str]]:
         """数据探索与预处理主流程，生成器。"""
         self.applied_steps = []
@@ -390,7 +390,7 @@ class DataPreprocessor:
         self.applied_steps.extend(screening_steps)
 
         # 保存经过有效特征初步筛选后的数据集
-        _save_dataframe(df_screened, "经过有效特征初步筛选后的数据集#2", filename_prefix, run_specific_dir)
+        _save_dataframe(df_screened, "#2经过有效特征初步筛选后的数据集", run_specific_dir)
 
         if df_screened.empty or self.target_metric not in df_screened.columns:
             err = "有效特征初步筛选后数据为空或目标列被移除。"
@@ -451,7 +451,7 @@ class DataPreprocessor:
         df_current = df_iter.copy()
 
         # 保存经过数据样本清洗后的数据集
-        _save_dataframe(df_current, "经过数据样本清洗后的数据集#3", filename_prefix, run_specific_dir)
+        _save_dataframe(df_current, "#3经过数据样本清洗后的数据集", run_specific_dir)
 
         # 阶段4: 缺失值处理
         yield {"type": "status_update",
@@ -470,7 +470,7 @@ class DataPreprocessor:
             df_current = self._execute_plan(df_current, missing_plan, "执行缺失值处理计划")
 
         # 保存经过缺失值处理后的数据集
-        _save_dataframe(df_current, "经过缺失值处理后的数据集#4", filename_prefix, run_specific_dir)
+        _save_dataframe(df_current, "#4经过缺失值处理后的数据集", run_specific_dir)
 
         # 阶段5: 数据精加工 (异常/变换/编码/缩放)
         yield {"type": "status_update",
@@ -508,6 +508,6 @@ class DataPreprocessor:
             }}
 
         # 保存最终预处理后的数据集
-        final_data_path = _save_dataframe(df_current, "经过数据预处理后的数据集#5", filename_prefix, run_specific_dir)
+        final_data_path = _save_dataframe(df_current, "#5经过数据预处理后的数据集", run_specific_dir)
 
         return df_current, self.applied_steps, self.fitted_objects, final_data_path

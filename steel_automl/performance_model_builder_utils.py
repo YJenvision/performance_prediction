@@ -10,9 +10,9 @@ from typing import Dict, Any
 import pandas as pd
 
 
-def _generate_filename_prefix(request_params: Dict[str, Any], timestamp_str: str) -> str:
+def _generate_filename(request_params: Dict[str, Any], timestamp_str: str) -> str:
     """
-    根据请求参数生成标准化的文件名头部或文件夹名称。
+    根据请求参数生成标准化的文件夹名称。
     命名标准: 目标性能_数据时间范围_牌号_机组_出钢记号_钢种_时间
     """
 
@@ -38,14 +38,14 @@ def _generate_filename_prefix(request_params: Dict[str, Any], timestamp_str: str
     return prefix.replace(" ", "").replace("/", "-")
 
 
-def _generate_data_filename(filename_prefix: str, data_type_str: str) -> str:
+def _generate_data_filename(data_type_str: str) -> str:
     """
     根据文件名头部和数据类型生成标准化的数据文件名。
     """
-    return f"{filename_prefix}_{data_type_str}.csv"
+    return f"{data_type_str}.csv"
 
 
-def _save_dataframe(df: pd.DataFrame, data_type_name: str, filename_prefix: str, run_specific_dir: str) -> str:
+def _save_dataframe(df: pd.DataFrame, data_type_name: str, run_specific_dir: str) -> str:
     """
     保存DataFrame到指定运行目录的 'data' 子目录中，并返回完整路径。
     """
@@ -54,21 +54,20 @@ def _save_dataframe(df: pd.DataFrame, data_type_name: str, filename_prefix: str,
     # MODIFIED: 基于传入的专属运行目录构建 'data' 子目录
     data_dir = os.path.join(run_specific_dir, 'data')
     os.makedirs(data_dir, exist_ok=True)
-    filename = _generate_data_filename(filename_prefix, data_type_name)
+    filename = _generate_data_filename(data_type_name)
     filepath = os.path.join(data_dir, filename)
     df.to_csv(filepath, index=False)
     print(f"数据已保存: {filepath}")
     return filepath
 
 
-def _save_fitted_objects(objects: Dict[str, Any], filename_prefix: str, run_specific_dir: str, object_type: str) -> str:
+def _save_fitted_objects(objects: Dict[str, Any], run_specific_dir: str, object_type: str) -> str:
     """
     使用pickle保存拟合的对象到指定运行目录的相应子目录中。
     这些对象对于在部署后转换新数据至关重要。
 
     参数:
     - objects: 包含已拟合转换器的字典。
-    - filename_prefix: 标准化的文件名头部。
     - run_specific_dir: 本次运行的专属根目录。
     - object_type: 对象的类型描述 (e.g., 'preprocessors', 'feature_generators')。
 
@@ -82,7 +81,7 @@ def _save_fitted_objects(objects: Dict[str, Any], filename_prefix: str, run_spec
     object_type_dir = os.path.join(run_specific_dir, object_type)
     os.makedirs(object_type_dir, exist_ok=True)
 
-    filename = f"{filename_prefix}_{object_type}.pkl"
+    filename = f"{object_type}.pkl"
     filepath = os.path.join(object_type_dir, filename)
 
     try:

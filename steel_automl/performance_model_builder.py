@@ -17,7 +17,7 @@ from steel_automl.data_preprocessing.preprocessor import DataPreprocessor
 from steel_automl.feature_engineering.feature_generator import FeatureGenerator
 from steel_automl.model_selection.selector import ModelSelector
 from steel_automl.modeling.trainer_evaluator import ModelTrainer
-from steel_automl.performance_model_builder_utils import _generate_filename_prefix, _save_dataframe, \
+from steel_automl.performance_model_builder_utils import _generate_filename, _save_dataframe, \
     _save_fitted_objects
 from steel_automl.pipeline.pipeline_builder import PipelineBuilder
 from steel_automl.results.result_handler import ResultHandler
@@ -63,12 +63,10 @@ def performanceModelBuilder(
     os.makedirs(run_dir, exist_ok=True)
 
     # 根据请求参数和时间戳为本次运行生成一个专属的文件夹名称
-    run_folder_name = _generate_filename_prefix(request_params, run_timestamp_str)
+    run_folder_name = _generate_filename(request_params, run_timestamp_str)
     # 创建本次运行的根目录
     run_specific_dir = os.path.join("automl_runs", run_folder_name)
     os.makedirs(run_specific_dir, exist_ok=True)
-    # 用于保存文件的文件名前缀，可以与文件夹同名以保持一致性
-    filename_prefix = run_folder_name
 
     user_request = request_params.get("user_request", "用户具体请求描述为空。")
     target_metric = request_params.get("target_metric")
@@ -125,7 +123,7 @@ def performanceModelBuilder(
                 yield {"type": "error", "payload": {"stage": current_stage,
                                                     "detail": f"按时间列 'REC_REVISE_TIME' 排序时失败: {e}"}}
 
-        _save_dataframe(raw_data, "原始数据集#1", filename_prefix, run_specific_dir)
+        _save_dataframe(raw_data, "#1原始数据集", run_specific_dir)
         pipeline_recorder.add_stage(current_stage, "success", {"sql_query": sql_query, "num_rows": len(raw_data)})
 
         yield {"type": "status_update",
@@ -142,7 +140,7 @@ def performanceModelBuilder(
 
         preprocessor = DataPreprocessor(user_request=user_request, target_metric=target_metric)
         # 修改点：调用预处理器时传入文件名和路径参数
-        preprocess_generator = preprocessor.preprocess_data(raw_data.copy(), filename_prefix, run_specific_dir)
+        preprocess_generator = preprocessor.preprocess_data(raw_data.copy(), run_specific_dir)
 
         returned_value, has_failed = yield from _consume_sub_generator(preprocess_generator)
 
@@ -162,7 +160,7 @@ def performanceModelBuilder(
         # 将这个字典作为一个整体保存，是确保模型部署时能够重现完全相同的预处理流程的最佳实践。
         # 文件将保存在指定的 'preprocessors' 文件夹内。
         if fitted_preproc_objects:
-            saved_preproc_path = _save_fitted_objects(fitted_preproc_objects, filename_prefix, run_specific_dir,
+            saved_preproc_path = _save_fitted_objects(fitted_preproc_objects, run_specific_dir,
                                                       "preprocessors")
             if saved_preproc_path:
                 preproc_artifacts["fitted_preprocessors_path"] = saved_preproc_path
@@ -217,7 +215,7 @@ def performanceModelBuilder(
 
         df_engineered, fe_steps, fitted_fe_objects = returned_value
 
-        engineered_data_path = _save_dataframe(df_engineered, "经过特征构造后的数据集#6", filename_prefix,
+        engineered_data_path = _save_dataframe(df_engineered, "#6经过特征构造后的数据集",
                                                run_specific_dir)
 
         fe_artifacts = {
@@ -226,7 +224,7 @@ def performanceModelBuilder(
         }
 
         if fitted_fe_objects:
-            saved_fe_path = _save_fitted_objects(fitted_fe_objects, filename_prefix, run_specific_dir,
+            saved_fe_path = _save_fitted_objects(fitted_fe_objects, run_specific_dir,
                                                  "feature_generators")
             if saved_fe_path:
                 fe_artifacts["fitted_feature_generators_path"] = saved_fe_path

@@ -72,9 +72,7 @@ class ResultHandler:
             results_dir = os.path.join(self.run_specific_dir, "result_info")
             os.makedirs(results_dir, exist_ok=True)
 
-            # 使用 pipeline_run_id (即文件夹名) 来命名结果文件，确保关联性
-            run_id = result_package.get('pipeline_run_id', 'unknown_run')
-            filename = f"{run_id}_result_summary.json"
+            filename = f"result_summary.json"
             filepath = os.path.join(results_dir, filename)
 
         try:

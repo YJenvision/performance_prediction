@@ -75,13 +75,6 @@ class ModelTrainer:
             return str(param_value).replace('/', '-')
 
         parts = [
-            format_param(self.request_params.get("target_metric")),
-            format_param(self.request_params.get("time_range")),
-            format_param(self.request_params.get("sg_sign")),
-            format_param(self.request_params.get("product_unit_no")),
-            format_param(self.request_params.get("st_no")),
-            format_param(self.request_params.get("steel_grade")),
-            self.run_timestamp_str,
             self.model_name,
         ]
         base_filename = "_".join(filter(None, parts))
@@ -126,7 +119,7 @@ class ModelTrainer:
         if dataset_name == "测试集" and predictions is not None:
             data_dir = os.path.join(self.run_specific_dir, "data")
             os.makedirs(data_dir, exist_ok=True)
-            filename = f"{self._generate_artifact_base_filename()}_测试集数据评估结果.csv"
+            filename = f"#7{self._generate_artifact_base_filename()}_测试集数据预测结果.csv"
             filepath = os.path.join(data_dir, filename)
 
             results_df = X_data.copy()

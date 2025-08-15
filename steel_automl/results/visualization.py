@@ -43,11 +43,10 @@ def _set_legend_style(ax: plt.Axes, loc: str = 'best'):
     return legend
 
 
-def _generate_plot_filename(request_params: Dict[str, Any], model_name: str, timestamp_str: str, dataset_name: str,
-                            plot_type: str) -> str:
+def _generate_plot_filename(model_name: str, dataset_name: str) -> str:
     """
     生成标准化的图表文件名。
-    命名逻辑: 目标性能_数据时间范围_牌号_机组_出钢记号_钢种_当前时间_模型算法_{dataset_name}_{plot_type}.png
+    命名逻辑: {model_name}_{dataset_name}_{plot_type}.png
     """
 
     def format_param(param_value: Any) -> str:
@@ -58,16 +57,8 @@ def _generate_plot_filename(request_params: Dict[str, Any], model_name: str, tim
         return str(param_value).replace('/', '-')
 
     parts = [
-        format_param(request_params.get("target_metric")),
-        format_param(request_params.get("time_range")),
-        format_param(request_params.get("sg_sign")),
-        format_param(request_params.get("product_unit_no")),
-        format_param(request_params.get("st_no")),
-        format_param(request_params.get("steel_grade")),
-        timestamp_str,
         model_name,
         dataset_name,
-        plot_type
     ]
     filename = "_".join(filter(None, parts)) + ".png"
     return filename.replace(" ", "")
@@ -152,8 +143,7 @@ def plot_prediction_vs_actual(
     _add_stats_textbox(ax, stats_text)
     _set_legend_style(ax, 'lower right')
 
-    filename = _generate_plot_filename(request_params, model_name, timestamp_str, dataset_name,
-                                       "prediction_vs_actual_plot")
+    filename = _generate_plot_filename(model_name, dataset_name)
     # 使用新的子文件夹路径保存文件
     filepath = os.path.join(plot_specific_dir, filename)
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
@@ -224,8 +214,7 @@ def plot_error_distribution(
     _add_stats_textbox(ax, stats_text)
     _set_legend_style(ax, 'upper right')
 
-    filename = _generate_plot_filename(request_params, model_name, timestamp_str, dataset_name,
-                                       "error_distribution_plot")
+    filename = _generate_plot_filename(model_name, dataset_name)
     # 使用新的子文件夹路径保存文件
     filepath = os.path.join(plot_specific_dir, filename)
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
@@ -284,8 +273,7 @@ def plot_value_distribution(
     _set_legend_style(ax, loc='upper right')
 
     # --- 6. 保存文件 ---
-    filename = _generate_plot_filename(request_params, model_name, timestamp_str, dataset_name,
-                                       "value_distribution_plot")
+    filename = _generate_plot_filename(model_name, dataset_name)
     # 使用新的子文件夹路径保存文件 ---
     filepath = os.path.join(plot_specific_dir, filename)
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
