@@ -122,10 +122,6 @@ class FeatureGenerator:
                 result_data = {"operation": operation, "status": "失败", "error": str(e)}
 
             self.applied_steps.append(step_log)
-            yield {"type": "substage_result", "payload": {
-                "stage": current_stage, "substage_title": f"执行计划: {operation}",
-                "data": result_data
-            }}
 
         return df_engineered
 

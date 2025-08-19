@@ -79,6 +79,7 @@ class SteelPerformanceIntentRecognizer:
         # 步骤2: 根据意图进行路由处理
         current_date = datetime.now()
 
+        # 模型的构建与评估
         if intent == "model_building_evaluation_request":
             yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
                                                         "detail": "意图为预测模型的构建与评估，开始提取相关关键信息..."}}
@@ -116,11 +117,6 @@ class SteelPerformanceIntentRecognizer:
                 return
             extracted_info_json = json.dumps(extracted_info, indent=2, ensure_ascii=False)
             print("意图识别：提取相关关键信息：", extracted_info_json)
-            yield {"type": "substage_result", "payload": {
-                "stage": current_stage,
-                "substage_title": "提取的相关关键信息",
-                "data": extracted_info_json
-            }}
 
             yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
                                                         "detail": "相关关键信息提取成功，开始映射目标性能指标..."}}
@@ -177,12 +173,6 @@ class SteelPerformanceIntentRecognizer:
                        "payload": {"stage": current_stage, "detail": "目标性能指标映射失败" + str(mapping_result)}}
                 return
 
-            yield {"type": "substage_result", "payload": {
-                "stage": current_stage,
-                "substage_title": "映射的目标性能指标",
-                "data": mapping_result["field_code"]
-            }}
-
             final_result = pre_result.copy()
             final_result["target_metric"] = mapping_result["field_code"]
 
@@ -194,18 +184,24 @@ class SteelPerformanceIntentRecognizer:
             yield {"type": "status_update",
                    "payload": {"stage": current_stage, "status": "success", "detail": "完成建模和评估流程的必要信息提取。"}}
 
-            yield {"type": "stage_completed", "payload": {
+            yield {"type": "intent_result", "payload": {
                 "stage": current_stage,
                 "status": "success",
                 "result": final_result
             }}
 
-        else:  # 其他意图
+        # 模型的监控与优化
+        elif intent == "model_monitoring_optimization_request":
+            yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
+                                                        "detail": "意图为预测模型的监控与优化，开始提取相关关键信息..."}}
+
+        # 其他意图
+        else:
             result = {"user_request": user_request, "intent": intent}
             yield {"type": "status_update",
                    "payload": {"stage": current_stage, "status": "success", "detail": f"意图识别完成，意图为: {intent}"}}
 
-            yield {"type": "stage_completed", "payload": {
+            yield {"type": "intent_result", "payload": {
                 "stage": current_stage,
                 "status": "success",
                 "result": result

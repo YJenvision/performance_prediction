@@ -153,7 +153,7 @@ class DataPreprocessor:
 
             yield {"type": "substage_result", "payload": {
                 "stage": current_stage, "substage_title": "基于规则的有效特征初步筛选",
-                "data": f"移除了{len(rule_based_removed_cols)}个常量或空列：{rule_based_removed_cols}"
+                "data": f"移除了 {len(rule_based_removed_cols)} 个常量或空列：{rule_based_removed_cols}"
             }}
 
         # 子任务2: 基于经验知识和需求的有效特征初步筛选
@@ -216,7 +216,7 @@ class DataPreprocessor:
 
                 yield {"type": "substage_result", "payload": {
                     "stage": current_stage, "substage_title": "基于需求和经验知识的有效特征动态筛选",
-                    "data": f"基于需求使用经验知识动态移除了{len(valid_cols_to_delete)}个特征:{valid_cols_to_delete}"
+                    "data": f"基于需求使用经验知识动态移除了 {len(valid_cols_to_delete)} 个特征：{valid_cols_to_delete}"
                 }}
             else:
                 steps_log.append({
@@ -373,9 +373,9 @@ class DataPreprocessor:
                 "data": f"移除了 {dropped_na_count} 个{self.target_metric}为空值的行和 {dropped_invalid_count} 个{self.target_metric}为无效值（0）的行。剩余 {len(df)} 行。"}
                    }
         else:
-            yield {"type": "substage_result",
-                   "payload": {"stage": current_stage, "substage_title": "目标性能列的检视和清洗",
-                               "data": f"目标性能列'{self.target_metric}'无需清洗。列值均有效。"}
+            yield {"type": "status_update",
+                   "payload": {"stage": current_stage, "status": "running",
+                               "detail": f"目标性能列 '{self.target_metric}' 无需清洗，列值均有效。"}
                    }
 
         if df.empty:
@@ -405,9 +405,6 @@ class DataPreprocessor:
                                                     "detail": "正在生成数据样本清洗画像..."}}
         iter_profile = generate_iterative_profile(df_iter, target_metric=self.target_metric)
         self.applied_steps.append({"step": "生成数据样本清洗画像", "status": "success", "profile": iter_profile})
-        yield {"type": "substage_result", "payload": {
-            "stage": current_stage, "substage_title": "数据样本清洗画像", "data": iter_profile
-        }}
 
         # 让LLM选阈值（含回退）
         th, second_pass = None, False
@@ -502,10 +499,6 @@ class DataPreprocessor:
             }}
             self.applied_steps.append(
                 {"step": "去除预处理计划后变成常量的特征", "status": "success", "removed_columns": final_cols_to_drop})
-        else:
-            yield {"type": "substage_result", "payload": {
-                "stage": current_stage, "substage_title": "检视后无需进行后处理过程"
-            }}
 
         # 保存最终预处理后的数据集
         final_data_path = _save_dataframe(df_current, "#5经过数据预处理后的数据集", run_specific_dir)

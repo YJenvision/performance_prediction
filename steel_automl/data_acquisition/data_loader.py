@@ -185,9 +185,8 @@ class DataLoader:
             yield {"type": "substage_result", "payload": {
                 "stage": current_stage,
                 "substage_title": "获取的数据概览",
-                "data": f"成功获取 {len(df)} 行, {len(df.columns)} 列数据。"
+                "data": f"成功获取 {len(df)} 行 {len(df.columns)} 列数据。"
             }}
-
 
             return df, query
 

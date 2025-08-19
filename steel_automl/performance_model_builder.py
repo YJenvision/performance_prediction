@@ -115,10 +115,6 @@ def performanceModelBuilder(
                 raw_data['REC_REVISE_TIME'] = pd.to_datetime(raw_data['REC_REVISE_TIME'])
                 raw_data.sort_values(by='REC_REVISE_TIME', inplace=True)
                 raw_data.reset_index(drop=True, inplace=True)
-                yield {"type": "substage_result", "payload": {
-                    "stage": current_stage, "substage_title": "数据排序",
-                    "data": "已成功按 'REC_REVISE_TIME' 字段对数据进行升序排列。"
-                }}
             except Exception as e:
                 yield {"type": "error", "payload": {"stage": current_stage,
                                                     "detail": f"按时间列 'REC_REVISE_TIME' 排序时失败: {e}"}}
@@ -129,11 +125,6 @@ def performanceModelBuilder(
         yield {"type": "status_update",
                "payload": {"stage": current_stage, "status": "success", "detail": "完成数据收集。"}}
 
-        yield {"type": "stage_completed", "payload": {
-            "stage": current_stage,
-            "status": "success",
-            "result": {"rows": len(raw_data), "columns": len(raw_data.columns), "sql_query": sql_query}
-        }}
 
         # 2. 数据探索与预处理
         current_stage = "数据探索与预处理"
@@ -192,12 +183,6 @@ def performanceModelBuilder(
         yield {"type": "status_update",
                "payload": {"stage": current_stage, "status": "success", "detail": "完成数据的探索与预处理。"}}
 
-        yield {"type": "stage_completed", "payload": {
-            "stage": current_stage,
-            "status": "success",
-            "result": {"rows": len(df_processed), "columns": len(df_processed.columns),
-                       "steps_summary": preprocessing_steps}
-        }}
 
         # 3. 特征工程
         current_stage = "特征工程"
@@ -244,10 +229,6 @@ def performanceModelBuilder(
         yield {"type": "status_update",
                "payload": {"stage": current_stage, "status": "success", "detail": "完成特征构造。"}}
 
-        yield {"type": "stage_completed", "payload": {"stage": current_stage, "status": "success",
-                                                      "result": {"rows": len(df_engineered),
-                                                                 "columns": len(df_engineered.columns),
-                                                                 "steps_summary": fe_steps}}}
 
         # 4. 模型选择与计划制定
         current_stage = "模型选择与计划制定"
@@ -286,8 +267,6 @@ def performanceModelBuilder(
         yield {"type": "status_update",
                "payload": {"stage": current_stage, "status": "success", "detail": "完成模型选择与计划制定。"}}
 
-        yield {"type": "stage_completed",
-               "payload": {"stage": current_stage, "status": "success", "result": {"automl_plan": automl_plan}}}
 
         # 5. Pipeline构建
         plan_details = automl_plan["model_plan"]
@@ -345,8 +324,6 @@ def performanceModelBuilder(
                "payload": {"stage": current_stage, "status": "success",
                            "detail": f"{chosen_model_name}模型训练和评估成功完成。"}}
 
-        yield {"type": "stage_completed",
-               "payload": {"stage": current_stage, "status": "success", "result": evaluation_results}}
 
         # 7. 结果汇总
         current_stage = "结果汇总"

@@ -63,22 +63,8 @@ class ModelTrainer:
         self.feature_importances: Optional[pd.Series] = None
 
     def _generate_artifact_base_filename(self) -> str:
-        """
-        生成标准化的产物（模型、数据）文件名基础部分。
-        """
-
-        def format_param(param_value: Any) -> str:
-            if param_value is None:
-                return ""
-            if isinstance(param_value, list):
-                return "-".join(map(str, param_value))
-            return str(param_value).replace('/', '-')
-
-        parts = [
-            self.model_name,
-        ]
-        base_filename = "_".join(filter(None, parts))
-        return base_filename.replace(" ", "")
+        parts = [self.model_name]
+        return "_".join(filter(None, parts)).replace(" ", "")
 
     def _evaluate_and_visualize(self, X_data: pd.DataFrame, y_data: pd.Series, dataset_name: str) -> Tuple[Dict, str]:
         """
@@ -258,11 +244,6 @@ class ModelTrainer:
 
             yield {"type": "status_update", "payload": {"stage": self.current_stage, "status": "running",
                                                         "detail": "正在保存模型文件..."}}
-
-            yield {"type": "substage_result", "payload": {
-                "stage": self.current_stage, "substage_title": "模型保存",
-                "data": {"status": "成功", "model_path": filepath}
-            }}
 
         except Exception as e:
             train_log_entry["status"] = "failed"

@@ -71,7 +71,7 @@ async def process_request_stream(user_query: str) -> AsyncGenerator[str, None]:
             chunk = json.loads(event_string.replace("data: ", "").strip())
             payload = chunk.get("payload", {})
 
-            if chunk.get("type") == "stage_completed":
+            if chunk.get("type") == "intent_result":
                 if payload.get("stage") == "意图识别" and payload.get("status") == "success":
                     intent_final_payload = payload.get("result")
 

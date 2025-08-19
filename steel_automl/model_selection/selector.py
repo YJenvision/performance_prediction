@@ -229,12 +229,10 @@ class ModelSelector:
 
         log.append({"step": "determine_acceptable_error", "details": error_log_msg})
 
-        if acceptable_error:
-            yield {"type": "substage_result", "payload": {
-                "stage": current_stage, "substage_title": "可接受误差分析",
-                "data": acceptable_error
-            }}
-        else:
+        if not acceptable_error:
+            yield {"type": "status_update",
+                   "payload": {"stage": current_stage, "status": "failed",
+                               "detail": "无法确定误差范围，将使用配置文件中的默认值。"}}
             # 如果确定误差失败，生成器内部已经yield了error, 这里直接返回后备计划
             return self._get_default_plan("无法确定误差范围", {}), log
 
@@ -269,9 +267,6 @@ class ModelSelector:
             log.append({"step": "llm_generate_plan", "status": "failed", "error": error_msg})
             final_plan = self._get_default_plan(error_msg, acceptable_error)
             log.append({"step": "fallback_plan_activated", "status": "success"})
-            yield {"type": "substage_result",
-                   "payload": {"stage": current_stage, "substage_title": "模型与模型超参数优化推荐计划 (后备)",
-                               "data": final_plan}}
             return final_plan, log
 
         try:
@@ -295,17 +290,11 @@ class ModelSelector:
             # 确保可接受误差被正确地设置在最终计划中
             final_plan["model_plan"]["acceptable_error"] = acceptable_error
             log.append({"step": "llm_generate_plan", "status": "success", "plan": final_plan})
-            yield {"type": "substage_result",
-                   "payload": {"stage": current_stage, "substage_title": "算法模型与模型超参数优化计划",
-                               "data": final_plan}}
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             error_msg = f"智能体解析或验证响应失败: {e}"
             log.append(
                 {"step": "llm_generate_plan", "status": "failed", "error": error_msg, "raw_response": llm_response_str})
             final_plan = self._get_default_plan(error_msg, acceptable_error)
             log.append({"step": "fallback_plan_activated", "status": "success"})
-            yield {"type": "substage_result",
-                   "payload": {"stage": current_stage, "substage_title": "算法模型与模型超参数优化计划 (后备)",
-                               "data": final_plan}}
 
         return final_plan, log
