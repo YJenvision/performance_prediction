@@ -72,35 +72,39 @@ class ModelTrainer:
         """
         metrics, predictions = self.model_instance.evaluate(X_data, y_data, self.acceptable_error)
 
+        # 用于存储Base64编码的图片
+        plots_base64 = {}
         if predictions is not None and self.acceptable_error and metrics is not None:
             visualization_dir = os.path.join(self.run_specific_dir, "visualization")
 
             # 绘制 预测值 vs 真实值 散点图
-            pred_vs_actual_path = plot_prediction_vs_actual(
+            pred_vs_actual_b64 = plot_prediction_vs_actual(
                 y_true=y_data, y_pred=predictions, acceptable_error=self.acceptable_error,
                 target_metric=self.target_metric, model_name=self.model_name, dataset_name=dataset_name,
                 request_params=self.request_params, timestamp_str=self.run_timestamp_str,
                 output_dir=visualization_dir
             )
-            metrics["prediction_plot_path"] = pred_vs_actual_path
+            plots_base64["prediction_vs_actual"] = pred_vs_actual_b64
 
             # 绘制误差分布图
-            error_dist_path = plot_error_distribution(
+            error_dist_b64 = plot_error_distribution(
                 y_true=y_data, y_pred=predictions, acceptable_error=self.acceptable_error,
                 target_metric=self.target_metric, model_name=self.model_name, dataset_name=dataset_name,
                 request_params=self.request_params, timestamp_str=self.run_timestamp_str,
                 output_dir=visualization_dir
             )
-            metrics["error_distribution_plot_path"] = error_dist_path
+            plots_base64["error_distribution"] = error_dist_b64
 
             # 绘制真实值与预测值分布对比图
-            value_dist_path = plot_value_distribution(
+            value_dist_b64 = plot_value_distribution(
                 y_true=y_data, y_pred=predictions,
                 target_metric=self.target_metric, model_name=self.model_name, dataset_name=dataset_name,
                 request_params=self.request_params, timestamp_str=self.run_timestamp_str,
                 output_dir=visualization_dir
             )
-            metrics["value_distribution_plot_path"] = value_dist_path
+            plots_base64["value_distribution"] = value_dist_b64
+
+            metrics["plots_base64"] = plots_base64
 
         if dataset_name == "测试集" and predictions is not None:
             data_dir = os.path.join(self.run_specific_dir, "data")
@@ -262,8 +266,9 @@ class ModelTrainer:
             # --- 子任务 3.1: 训练集评估 ---
             train_metrics, train_log = self._evaluate_and_visualize(X_train, y_train, "训练集")
             self.evaluation_results["train"] = train_metrics
+            train_metrics_for_log = {k: v for k, v in train_metrics.items() if k != 'plots_base64'}
             self.training_log.append(
-                {"step": "model_evaluation_train", "status": "success", "details": train_log, "metrics": train_metrics})
+                {"step": "model_evaluation_train", "status": "success", "details": train_log, "metrics": train_metrics_for_log})
             yield {"type": "substage_result", "payload": {
                 "stage": self.current_stage, "substage_title": "模型评估 (训练集)",
                 "data": train_metrics
@@ -272,8 +277,9 @@ class ModelTrainer:
             # --- 子任务 3.2: 测试集评估 ---
             test_metrics, test_log = self._evaluate_and_visualize(X_test, y_test, "测试集")
             self.evaluation_results["test"] = test_metrics
+            test_metrics_for_log = {k: v for k, v in test_metrics.items() if k != 'plots_base64'}
             self.training_log.append(
-                {"step": "model_evaluation_test", "status": "success", "details": test_log, "metrics": test_metrics})
+                {"step": "model_evaluation_test", "status": "success", "details": test_log, "metrics": test_metrics_for_log})
             yield {"type": "substage_result", "payload": {
                 "stage": self.current_stage, "substage_title": "模型评估 (测试集)",
                 "data": test_metrics

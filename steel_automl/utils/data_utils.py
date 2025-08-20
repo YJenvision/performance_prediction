@@ -122,7 +122,7 @@ def generate_iterative_profile(
         topk_missing_cols: int = 40
 ) -> Dict[str, Any]:
     """
-    为数据样本清洗生成一个轻量级的画像 (此函数与您提供的版本基本一致，保持不变)。
+    为数据样本清洗生成一个轻量级的画像。
     """
     features = [c for c in df.columns if c != target_metric]
     n_rows, n_cols = len(df), len(features) if features else 0

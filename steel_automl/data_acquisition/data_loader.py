@@ -170,23 +170,13 @@ class DataLoader:
                                                     "detail": "智能体未能成功生成SQL查询。"}}
                 return None, None
 
-            yield {"type": "substage_result", "payload": {
-                "stage": current_stage,
-                "substage_title": "生成的SQL查询",
-                "data": query
-            }}
-
             yield {"type": "status_update",
-                   "payload": {"stage": current_stage, "status": "running", "detail": "正在执行数据查询获取数据..."}}
+                   "payload": {"stage": current_stage, "status": "running", "detail": "执行数据加载器..."}}
 
             df = pd.read_sql(query, self.engine)
             df.columns = df.columns.str.upper()
 
-            yield {"type": "substage_result", "payload": {
-                "stage": current_stage,
-                "substage_title": "获取的数据概览",
-                "data": f"成功获取 {len(df)} 行 {len(df.columns)} 列数据。"
-            }}
+            yield {"type": "thinking_stream", "payload": f"执行的目标查询是：{query}。成功获取 {len(df)} 行 {len(df.columns)} 列数据。"}
 
             return df, query
 
@@ -198,35 +188,3 @@ class DataLoader:
             return None, query
         finally:
             self._disconnect()
-
-    def fetch_data_from_excel(self, path: str
-                              ) -> Generator[Dict[str, Any], None, Tuple[Optional[pd.DataFrame], Optional[str]]]:
-        """
-        从excel中获取数据，生成器。
-        """
-        current_stage = "数据收集"
-        yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "running", "detail": "初始化数据加载器..."}}
-
-        query = "excel文件中获取数据"
-        try:
-            yield {"type": "status_update",
-                   "payload": {"stage": current_stage, "status": "running",
-                               "detail": "正在从excel文件中获取数据..."}}
-
-            df = pd.read_excel(path)
-            df.columns = df.columns.str.upper()
-
-            yield {"type": "substage_result", "payload": {
-                "stage": current_stage,
-                "substage_title": "数据概览",
-                "data": f"成功从excel文件获取 {len(df)} 行, {len(df.columns)} 列数据。"
-            }}
-
-            return df, query
-
-        except Exception as e:
-            error_details = f"从excel文件中获取数据时发生错误: {e}"
-            yield {"type": "error",
-                   "payload": {"stage": current_stage, "detail": error_details}}
-            return None, query

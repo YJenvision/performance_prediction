@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import numpy as np
-from typing import Dict, Union, Any
+from typing import Dict, Union, Any, Tuple
+import io
+import base64
 
 
 def _set_plot_style(title: str, xlabel: str, ylabel: str, ax: plt.Axes):
@@ -76,7 +78,9 @@ def plot_prediction_vs_actual(
         output_dir: str
 ) -> str:
     """
-    绘制真实值与预测值的对比散点图，并高亮显示在可接受误差范围内的点。
+    绘制真实值与预测值的对比散点图。
+
+    现在返回 (文件路径, Base64编码的图片字符串)
     """
     # 创建特定类型的子文件夹
     plot_specific_dir = os.path.join(output_dir, "prediction_vs_actual")
@@ -92,12 +96,10 @@ def plot_prediction_vs_actual(
 
     if error_type == 'percentage':
         with np.errstate(divide='ignore', invalid='ignore'):
-            # 仅在 y_true 不为0的地方计算百分比误差
             non_zero_mask = y_true != 0
             is_within_bounds = np.zeros_like(y_true, dtype=bool)
             is_within_bounds[non_zero_mask] = (abs_error[non_zero_mask] / y_true.loc[non_zero_mask]) <= (
                     error_value / 100)
-            # 如果真实值为0，则只有预测值也为0才算在界内
             is_within_bounds[~non_zero_mask] = y_pred[~non_zero_mask] == 0
         error_str = f"±{error_value}%"
     else:  # value
@@ -144,12 +146,21 @@ def plot_prediction_vs_actual(
     _set_legend_style(ax, 'lower right')
 
     filename = _generate_plot_filename(model_name, dataset_name)
-    # 使用新的子文件夹路径保存文件
     filepath = os.path.join(plot_specific_dir, filename)
+
+    # 1. 保存到文件 (保留原有逻辑)
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
+
+    # 2. 【新增】保存到内存并转为Base64
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')  # 使用稍低的分辨率以减小传输大小
+    buf.seek(0)
+    image_base64 = base64.b64encode(buf.read()).decode('utf-8')
+    buf.close()
+
     plt.close(fig)
 
-    return filepath
+    return image_base64
 
 
 def plot_error_distribution(
@@ -165,9 +176,8 @@ def plot_error_distribution(
 ) -> str:
     """
     绘制预测误差的分布直方图。
-    智能切换：如果误差类型是'percentage'，则绘制百分比误差分布；否则绘制绝对误差分布。
+    【修改】: 现在返回 (文件路径, Base64编码的图片字符串)
     """
-    # 创建特定类型的子文件夹
     plot_specific_dir = os.path.join(output_dir, "error_distribution")
     os.makedirs(plot_specific_dir, exist_ok=True)
 
@@ -182,7 +192,6 @@ def plot_error_distribution(
     if error_type == 'percentage':
         xlabel = '预测百分比误差 (%)'
         title = f'{model_name} 在 {dataset_name} 上的预测百分比误差分布\n(目标: {target_metric})'
-        # 安全地计算百分比误差，避免除以零
         y_true_safe = y_true.replace(0, np.nan)
         percentage_error = ((y_pred - y_true) / y_true_safe * 100)
         plot_data = percentage_error.dropna().replace([np.inf, -np.inf], np.nan).dropna()
@@ -215,12 +224,21 @@ def plot_error_distribution(
     _set_legend_style(ax, 'upper right')
 
     filename = _generate_plot_filename(model_name, dataset_name)
-    # 使用新的子文件夹路径保存文件
     filepath = os.path.join(plot_specific_dir, filename)
+
+    # 1. 保存到文件
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
+
+    # 2. 【新增】保存到内存并转为Base64
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    buf.seek(0)
+    image_base64 = base64.b64encode(buf.read()).decode('utf-8')
+    buf.close()
+
     plt.close(fig)
 
-    return filepath
+    return image_base64
 
 
 def plot_value_distribution(
@@ -235,48 +253,42 @@ def plot_value_distribution(
 ) -> str:
     """
     绘制真实值与预测值的数值分布对比直方图。
+    【修改】: 现在返回 (文件路径, Base64编码的图片字符串)
     """
-    # 创建特定类型的子文件夹
     plot_specific_dir = os.path.join(output_dir, "value_distribution")
     os.makedirs(plot_specific_dir, exist_ok=True)
 
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, ax = plt.subplots(figsize=(12, 8))
 
-    # --- 1. 计算统计数据 ---
-    stats_true = {
-        "N": len(y_true),
-    }
-    stats_pred = {
-        "N": len(y_pred),
-    }
-
-    # --- 2. 创建图例标签 ---
+    stats_true = {"N": len(y_true)}
+    stats_pred = {"N": len(y_pred)}
     label_true = f"实际值 (样本数:{stats_true['N']})"
     label_pred = f"预测值 (样本数:{stats_pred['N']})"
 
-    # --- 3. 自适应计算分箱 ---
-    # 合并数据以确定全局范围和最优分箱
     combined_data = np.concatenate((y_true, y_pred))
-    # 使用 'auto' 策略，让 numpy 根据 Freedman-Diaconis rule 或 Sturges' formula 自动选择最佳分箱数
     bins = np.histogram_bin_edges(combined_data, bins='auto')
 
-    # --- 4. 绘图 (移除边框: lw=0) ---
-    # 绘制真实值分布
     sns.histplot(y_true, bins=bins, ax=ax, color="C0", label=label_true, alpha=0.7, kde=False, lw=0)
-    # 绘制预测值分布
     sns.histplot(y_pred, bins=bins, ax=ax, color="C1", label=label_pred, alpha=0.6, kde=False, lw=0)
 
-    # --- 5. 设置图表样式 ---
     title = f'{model_name} 在 {dataset_name} 上真实值与预测值分布对比\n(目标: {target_metric})'
     _set_plot_style(title, f'{target_metric} 数值', '频数', ax)
     _set_legend_style(ax, loc='upper right')
 
-    # --- 6. 保存文件 ---
     filename = _generate_plot_filename(model_name, dataset_name)
-    # 使用新的子文件夹路径保存文件 ---
     filepath = os.path.join(plot_specific_dir, filename)
+
+    # 1. 保存到文件
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
+
+    # 2. 保存到内存并转为Base64
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    buf.seek(0)
+    image_base64 = base64.b64encode(buf.read()).decode('utf-8')
+    buf.close()
+
     plt.close(fig)
 
-    return filepath
+    return image_base64

@@ -124,8 +124,9 @@ class DataPreprocessor:
 
         # 子任务1: 删除常量列和全空列
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
-                                                    "detail": "有效特征初步筛选：正在检查并移除常量列和全空列..."}}
+                                                    "detail": "有效特征初步筛选：正在检查并移除常量特征和全空特征..."}}
 
+        yield {"type": "thinking_stream", "payload": "首先我将对数据集中的所有空取值进行标准化处理，将其中的nan、null、(null)、单个或多个空字符串等表示空情形的数据进行统一化，随后我将检查并移除常量特征和全空特征..."}
         null_placeholders = [r'^\s*$', r'\(?null\)?', 'null', 'nan']
         for placeholder in null_placeholders:
             df_screened.replace(to_replace=placeholder, value=np.nan, regex=True, inplace=True)
@@ -147,17 +148,16 @@ class DataPreprocessor:
             steps_log.append({
                 "step": "基于规则的有效特征初步筛选",
                 "status": "success",
-                "details": "移除常量列和全空列。",
+                "details": "移除常量特征和全空特征。",
                 "removed_columns": rule_based_removed_cols
             })
 
             yield {"type": "substage_result", "payload": {
-                "stage": current_stage, "substage_title": "基于规则的有效特征初步筛选",
-                "data": f"移除了 {len(rule_based_removed_cols)} 个常量或空列：{rule_based_removed_cols}"
+                "stage": current_stage, "substage_title": "基于规则的有效特征初步筛选成果",
+                "data": f"移除了 {len(rule_based_removed_cols)} 个常量特征或空特征：{rule_based_removed_cols}"
             }}
 
         # 子任务2: 基于经验知识和需求的有效特征初步筛选
-        detail = "正在基于需求使用经验知识进行特征筛选..."
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
                                                     "detail": "有效特征初步筛选：正在基于需求使用经验知识进行特征筛选..."}}
 
@@ -215,7 +215,7 @@ class DataPreprocessor:
                 })
 
                 yield {"type": "substage_result", "payload": {
-                    "stage": current_stage, "substage_title": "基于需求和经验知识的有效特征动态筛选",
+                    "stage": current_stage, "substage_title": "基于需求和经验知识的有效特征动态筛选成果",
                     "data": f"基于需求使用经验知识动态移除了 {len(valid_cols_to_delete)} 个特征：{valid_cols_to_delete}"
                 }}
             else:
@@ -347,7 +347,7 @@ class DataPreprocessor:
 
         # 阶段1: 目标列清洗
         yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "running", "detail": "正在检视并清洗目标性能列..."}}
+               "payload": {"stage": current_stage, "status": "running", "detail": "正在检视目标性能特征列..."}}
 
         initial_rows = len(df)
         df.dropna(subset=[self.target_metric], inplace=True)
@@ -361,22 +361,18 @@ class DataPreprocessor:
 
         if dropped_na_count > 0 or dropped_invalid_count > 0:
             self.applied_steps.append({
-                "step": "目标性能列的检视和清洗", "status": "success",
-                "details": f"从目标性能列'{self.target_metric}'中移除了包含空值或指定无效值（0）的行。",
+                "step": "目标性能特征列的检视和清洗", "status": "success",
+                "details": f"从目标性能特征列'{self.target_metric}'中移除了包含空值或指定无效值（0）的行。",
                 "removed_na_rows": int(dropped_na_count),
                 "removed_invalid_rows": int(dropped_invalid_count),
                 "remaining_rows": len(df)
             })
 
-            yield {"type": "substage_result", "payload": {
-                "stage": current_stage, "substage_title": "目标性能列的检视和清洗",
-                "data": f"移除了 {dropped_na_count} 个{self.target_metric}为空值的行和 {dropped_invalid_count} 个{self.target_metric}为无效值（0）的行。剩余 {len(df)} 行。"}
-                   }
+            yield {"type": "thinking_stream", "payload": f"经过检视，已经移除了 {dropped_na_count} 个 {self.target_metric} 为空值的数据样本和 {dropped_invalid_count} 个 {self.target_metric} 为无效值（0）的数据样本。剩余数据样本 {len(df)} 个。"}
+
         else:
-            yield {"type": "status_update",
-                   "payload": {"stage": current_stage, "status": "running",
-                               "detail": f"目标性能列 '{self.target_metric}' 无需清洗，列值均有效。"}
-                   }
+            yield {"type": "thinking_stream",
+                   "payload": f"经过检视，所有数据样本的目标性能特征列 '{self.target_metric}' 取值均有效，无需清洗。"}
 
         if df.empty:
             error_msg = "清洗目标性能列后，数据集为空。预处理中止。"
@@ -402,7 +398,7 @@ class DataPreprocessor:
         df_iter = df_screened.copy()
 
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
-                                                    "detail": "正在生成数据样本清洗画像..."}}
+                                                    "detail": "正在检视数据样本并进行清洗..."}}
         iter_profile = generate_iterative_profile(df_iter, target_metric=self.target_metric)
         self.applied_steps.append({"step": "生成数据样本清洗画像", "status": "success", "profile": iter_profile})
 
@@ -420,16 +416,13 @@ class DataPreprocessor:
         df_iter, meta = self._drop_rows_by_ratio(df_iter, th)
         self.applied_steps.append({"step": "数据样本清洗", "status": "success", **meta})
         yield {"type": "substage_result", "payload": {
-            "stage": current_stage, "substage_title": "数据样本清洗",
-            "data": {"threshold": th, "removed_rows": meta["removed"]}
+            "stage": current_stage, "substage_title": "数据样本清洗成果",
+            "data": f"根据数据样本的检视情况，为了平衡数据保留和清洗效果，选择阈值 {th} 筛除了 {meta['removed']} 个相对高特征缺失率样本。"
         }}
 
         if second_pass:
             iter_profile = generate_iterative_profile(df_iter, target_metric=self.target_metric)
             self.applied_steps.append({"step": "生成数据样本清洗画像#2", "status": "success", "profile": iter_profile})
-            yield {"type": "substage_result", "payload": {
-                "stage": current_stage, "substage_title": "数据样本清洗画像#2", "data": iter_profile
-            }}
             decider2 = self._decide_row_pruning_threshold(iter_profile)
             while True:
                 try:
@@ -441,8 +434,8 @@ class DataPreprocessor:
             df_iter, meta2 = self._drop_rows_by_ratio(df_iter, th2)
             self.applied_steps.append({"step": "数据样本清洗#2", "status": "success", **meta2})
             yield {"type": "substage_result", "payload": {
-                "stage": current_stage, "substage_title": "数据样本清洗#2",
-                "data": {"threshold": th2, "removed_rows": meta2["removed"]}
+                "stage": current_stage, "substage_title": "数据样本清洗#2成果",
+                "data": f"根据最新一个版本的数据样本检视情况，本轮数据样本清洗选择阈值 {th} 筛除了 {meta['removed']} 个相对高特征缺失率样本。"
             }}
 
         df_current = df_iter.copy()

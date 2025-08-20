@@ -182,7 +182,9 @@ class SteelPerformanceIntentRecognizer:
                 return
 
             yield {"type": "status_update",
-                   "payload": {"stage": current_stage, "status": "success", "detail": "完成建模和评估流程的必要信息提取。"}}
+                   "payload": {"stage": current_stage, "status": "running", "detail": "完成建模和评估流程的必要信息准备。"}}
+            yield {"type": "thinking_stream",
+                   "payload": "我已完成建模和评估流程的必要信息准备，根据用户意图，即将启动模型构建与评估功能。"}
 
             yield {"type": "intent_result", "payload": {
                 "stage": current_stage,
