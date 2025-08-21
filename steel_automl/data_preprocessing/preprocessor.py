@@ -126,7 +126,8 @@ class DataPreprocessor:
         yield {"type": "status_update", "payload": {"stage": current_stage, "status": "running",
                                                     "detail": "有效特征初步筛选：正在检查并移除常量特征和全空特征..."}}
 
-        yield {"type": "thinking_stream", "payload": "首先我将对数据集中的所有空取值进行标准化处理，将其中的nan、null、(null)、单个或多个空字符串等表示空情形的数据进行统一化，随后我将检查并移除常量特征和全空特征..."}
+        yield {"type": "thinking_stream",
+               "payload": "首先我将对数据集中的所有空取值进行标准化处理，将其中的nan、null、(null)、单个或多个空字符串等表示空情形的数据进行统一化，随后我将检查并移除常量特征和全空特征..."}
         null_placeholders = [r'^\s*$', r'\(?null\)?', 'null', 'nan']
         for placeholder in null_placeholders:
             df_screened.replace(to_replace=placeholder, value=np.nan, regex=True, inplace=True)
@@ -290,15 +291,17 @@ class DataPreprocessor:
         df2 = df.loc[~mask].copy()
         return df2, {"removed": removed, "threshold": threshold}
 
-    def _execute_plan(self, df: pd.DataFrame, plan: Dict[str, List[Dict[str, Any]]], stage_name: str) -> pd.DataFrame:
-        """根据制定的计划，按预设顺序执行预处理步骤。"""
+    def _execute_plan(self, df: pd.DataFrame, plan: Dict[str, List[Dict[str, Any]]], stage_name: str) -> Generator[
+        Dict[str, Any], None, pd.DataFrame]:
+        """根据制定的计划，按预设顺序执行预处理步骤，并流式返回执行结果。"""
         df_processed = df.copy()
 
         if not isinstance(plan, dict):
             error_msg = f"预处理计划格式无效（应为字典），跳过执行。计划内容: {plan}"
             self.applied_steps.append({"step": stage_name, "status": "failed", "error": error_msg})
             return df_processed
-
+        yield {'type': 'status_update',
+               'payload': {'stage': '数据探索与预处理', 'status': 'running', 'detail': '正在执行缺失值处理策略...'}}
         # 按预定义的顺序遍历所有可能的操作
         for operation_type in self.PROCESSING_ORDER:
             # 遍历所有列，执行当前类型的操作
@@ -321,12 +324,18 @@ class DataPreprocessor:
 
                             result = method_to_call(df_processed, column, **params)
 
-                            fitted_obj = None
+                            result_obj = None
                             if isinstance(result, tuple) and len(result) == 2:
-                                df_processed, fitted_obj = result
-                                if fitted_obj:
+                                df_processed, result_obj = result
+                                # 新增逻辑：检查返回的是否为执行结果消息
+                                if isinstance(result_obj, dict) and 'message' in result_obj:
+                                    yield {
+                                        'type': 'thinking_stream',
+                                        'payload': result_obj['message']}
+                                # 否则，视为拟合对象进行存储
+                                elif result_obj is not None:
                                     object_key = f"{column}_{operation_type}"
-                                    self.fitted_objects[object_key] = fitted_obj
+                                    self.fitted_objects[object_key] = result_obj
                             else:
                                 df_processed = result
 
@@ -368,7 +377,8 @@ class DataPreprocessor:
                 "remaining_rows": len(df)
             })
 
-            yield {"type": "thinking_stream", "payload": f"经过检视，已经移除了 {dropped_na_count} 个 {self.target_metric} 为空值的数据样本和 {dropped_invalid_count} 个 {self.target_metric} 为无效值（0）的数据样本。剩余数据样本 {len(df)} 个。"}
+            yield {"type": "thinking_stream",
+                   "payload": f"经过检视，已经移除了 {dropped_na_count} 个 {self.target_metric} 为空值的数据样本和 {dropped_invalid_count} 个 {self.target_metric} 为无效值（0）的数据样本。剩余数据样本 {len(df)} 个。"}
 
         else:
             yield {"type": "thinking_stream",
@@ -445,7 +455,7 @@ class DataPreprocessor:
 
         # 阶段4: 缺失值处理
         yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "running", "detail": "进入缺失值处理阶段..."}}
+               "payload": {"stage": current_stage, "status": "running", "detail": "正在进行缺失值处理策略制定..."}}
         profile_after_cleaning = generate_data_profile(df_current, self.target_metric)
 
         sys_prompt = get_prompt('preprocessor.missing_value_plan.system', user_request=self.user_request)
@@ -457,7 +467,8 @@ class DataPreprocessor:
         missing_plan = yield from missing_plan_gen
 
         if missing_plan:
-            df_current = self._execute_plan(df_current, missing_plan, "执行缺失值处理计划")
+            plan_gen = self._execute_plan(df_current, missing_plan, "缺失值处理")
+            df_current = yield from plan_gen
 
         # 保存经过缺失值处理后的数据集
         _save_dataframe(df_current, "#4经过缺失值处理后的数据集", run_specific_dir)
@@ -477,7 +488,8 @@ class DataPreprocessor:
         final_plan = yield from final_plan_gen
 
         if final_plan:
-            df_current = self._execute_plan(df_current, final_plan, "执行数据精加工计划")
+            plan_gen = self._execute_plan(df_current, final_plan, "数据精加工")
+            df_current = yield from plan_gen
 
         # 后处理
         detail = "正在检视数据并进行后处理过程..."
@@ -486,13 +498,16 @@ class DataPreprocessor:
                               df_current[col].dropna().nunique() <= 1 and col != self.target_metric]
         if final_cols_to_drop:
             df_current = df_current.drop(columns=final_cols_to_drop)
+            yield {"type": "thinking_stream", "payload": "我要检查并且筛除执行预处理计划之后变成常量的特征列..."}
             yield {"type": "substage_result", "payload": {
-                "stage": current_stage, "substage_title": "去除预处理计划后变成常量的特征",
-                "data": final_cols_to_drop
+                "stage": current_stage, "substage_title": "后处理过程成果",
+                "data": f"后处理过程执行完毕，共去除 {len(final_cols_to_drop)} 个变成常量的特征列。它们是：{'、'.join(final_cols_to_drop)}"
             }}
             self.applied_steps.append(
                 {"step": "去除预处理计划后变成常量的特征", "status": "success", "removed_columns": final_cols_to_drop})
-
+        else:
+            yield {"type": "thinking_stream", "payload": "我要检查并且筛除执行预处理计划之后变成常量的特征列..."}
+            yield {"type": "thinking_stream", "payload": "没有发现变成常量的特征列。"}
         # 保存最终预处理后的数据集
         final_data_path = _save_dataframe(df_current, "#5经过数据预处理后的数据集", run_specific_dir)
 

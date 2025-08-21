@@ -12,28 +12,40 @@ import category_encoders as ce
 
 
 # ---------- 缺失值处理 ----------
-def impute_mean(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, None]:
+def impute_mean(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, Dict[str, str]]:
     """使用均值填充指定列的缺失值。"""
-    if column not in df.columns: return df, None
+    message = f"特征 '{column}' 无需处理或非数值类型，跳过均值填充。"
+    if column not in df.columns:
+        message = f"特征 '{column}' 不存在，跳过均值填充。"
+        return df, {'message': message}
     if df[column].isnull().sum() > 0 and pd.api.types.is_numeric_dtype(df[column]):
         imputer = SimpleImputer(strategy='mean')
         df[column] = imputer.fit_transform(df[[column]]).ravel()
-    return df, None
+        message = f"对数值型特征 '{column}' 应用了均值填充。"
+    return df, {'message': message}
 
 
-def impute_median(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, None]:
+def impute_median(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, Dict[str, str]]:
     """使用中位数填充指定列的缺失值。"""
-    if column not in df.columns: return df, None
+    message = f"特征 '{column}' 无需处理或非数值类型，跳过中位数填充。"
+    if column not in df.columns:
+        message = f"特征 '{column}' 不存在，跳过中位数填充。"
+        return df, {'message': message}
     if df[column].isnull().sum() > 0 and pd.api.types.is_numeric_dtype(df[column]):
         imputer = SimpleImputer(strategy='median')
         df[column] = imputer.fit_transform(df[[column]]).ravel()
-    return df, None
+        message = f"对数值型特征 '{column}' 应用了中位数填充。"
+    return df, {'message': message}
 
 
-def impute_most_frequent(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, None]:
+def impute_most_frequent(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, Dict[str, str]]:
     """使用众数填充指定列的缺失值。"""
-    if column not in df.columns: return df, None
-    if df[column].isnull().sum() == 0: return df, None
+    message = f"特征 '{column}' 无缺失值，跳过众数填充。"
+    if column not in df.columns:
+        message = f"特征 '{column}' 不存在，跳过众数填充。"
+        return df, {'message': message}
+    if df[column].isnull().sum() == 0:
+        return df, {'message': message}
 
     # 保持原始数据类型
     original_dtype = df[column].dtype
@@ -41,38 +53,47 @@ def impute_most_frequent(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, N
     # 对数值或类别型数据统一使用SimpleImputer，更稳健
     imputer = SimpleImputer(strategy='most_frequent')
     df[column] = imputer.fit_transform(df[[column]]).ravel()
-
+    message = f"对特征 '{column}' 应用了众数填充。"
     # 尝试恢复原始类型，失败则忽略
     try:
         df[column] = df[column].astype(original_dtype)
     except (ValueError, TypeError):
         pass
 
-    return df, None
+    return df, {'message': message}
 
 
-def delete_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, None]:
+def delete_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, Dict[str, str]]:
     """删除指定的列。"""
+    message = f"特征 '{column}' 不存在，无需删除。"
     if column in df.columns:
         df = df.drop(columns=[column])
-    return df, None
+        message = f"根据计划，删除了特征 '{column}'。"
+    return df, {'message': message}
 
 
-def delete_rows_with_missing_in_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, None]:
+def delete_rows_with_missing_in_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, Dict[str, str]]:
     """删除在指定列有缺失值的行。"""
+    message = f"特征 '{column}' 不存在，无法删除行。"
     if column in df.columns:
+        initial_rows = len(df)
         df = df.dropna(subset=[column])
-    return df, None
+        removed_count = initial_rows - len(df)
+        message = f"删除了特征 '{column}' 中 {removed_count} 个包含缺失值的样本行。"
+    return df, {'message': message}
 
 
-def add_missing_indicator(df: pd.DataFrame, column: str, suffix: str = "_ismissing") -> Tuple[pd.DataFrame, None]:
+def add_missing_indicator(df: pd.DataFrame, column: str, suffix: str = "_ismissing") -> Tuple[
+    pd.DataFrame, Dict[str, str]]:
     """为指定列添加一个缺失指示器特征。"""
+    message = f"特征 '{column}' 不存在，无法添加缺失指示器。"
     if column in df.columns:
         df[f"{column}{suffix}"] = df[column].isna().astype(int)
-    return df, None
+        message = f"为特征 '{column}' 添加了缺失指示器 '{column}{suffix}'。"
+    return df, {'message': message}
 
 
-def impute_auto(df: pd.DataFrame, column: str, skew_threshold: float = 1.0) -> Tuple[pd.DataFrame, None]:
+def impute_auto(df: pd.DataFrame, column: str, skew_threshold: float = 1.0) -> Tuple[pd.DataFrame, Dict[str, str]]:
     """
     自适应填充：
     通过偏度值（skewness）选择填充策略符合统计学原理：
@@ -82,18 +103,26 @@ def impute_auto(df: pd.DataFrame, column: str, skew_threshold: float = 1.0) -> T
     - 对类别列，使用众数。
     """
     if column not in df.columns or df[column].isnull().sum() == 0:
-        return df, None
+        message = f"特征 '{column}' 不存在或无缺失值，跳过自动填充。"
+        return df, {'message': message}
 
     ser = df[column]
     if pd.api.types.is_numeric_dtype(ser):
         # 根据偏度选择均/中位数
         skew_val = ser.dropna().skew()
         if abs(float(skew_val)) >= skew_threshold:
-            return impute_median(df, column)
-        return impute_mean(df, column)
+            impute_median(df, column)  # 执行填充
+            message = f"特征 '{column}' 的偏度值为 {skew_val:.2f}，数据呈偏态分布，应用中位数进行填充。"
+            return df, {'message': message}
+
+        impute_mean(df, column)  # 执行填充
+        message = f"特征 '{column}' 的偏度值为 {skew_val:.2f}，数据分布近似对称，应用均值进行填充。"
+        return df, {'message': message}
 
     # 类别/二元 -> 众数
-    return impute_most_frequent(df, column)
+    impute_most_frequent(df, column)  # 执行填充
+    message = f"特征 '{column}' 为类别型数据，应用众数进行填充。"
+    return df, {'message': message}
 
 
 # ---------- 缩放与变换 ----------
@@ -267,5 +296,5 @@ PREPROCESSING_METHODS_MAP = {
     "winsorize_by_quantile": winsorize_by_quantile,
 
     # 空操作
-    "no_action": lambda df, column, **k: (df, None),
+    "no_action": lambda df, column, **k: (df, {'message': f"特征 '{column}' 无需操作。"}),
 }
