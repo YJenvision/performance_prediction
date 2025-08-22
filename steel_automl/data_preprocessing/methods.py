@@ -126,145 +126,150 @@ def impute_auto(df: pd.DataFrame, column: str, skew_threshold: float = 1.0) -> T
 
 
 # ---------- 缩放与变换 ----------
-def standard_scale_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, StandardScaler]:
+def standard_scale_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """对指定列进行标准化。"""
     scaler = StandardScaler()
+    message = f"特征 '{column}' 无需处理或非数值类型，跳过标准化缩放。"
     if column in df.columns and pd.api.types.is_numeric_dtype(df[column]):
         df[column] = scaler.fit_transform(df[[column]]).ravel()
-    return df, scaler
+        message = f"对数值型特征 '{column}' 应用了标准化缩放。"
+    return df, {'message': message, 'fitted_object': scaler}
 
 
-def min_max_scale_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, MinMaxScaler]:
+def min_max_scale_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """对指定列进行归一化。"""
     scaler = MinMaxScaler()
+    message = f"特征 '{column}' 无需处理或非数值类型，跳过归一化缩放。"
     if column in df.columns and pd.api.types.is_numeric_dtype(df[column]):
         df[column] = scaler.fit_transform(df[[column]]).ravel()
-    return df, scaler
+        message = f"对数值型特征 '{column}' 应用了归一化缩放。"
+    return df, {'message': message, 'fitted_object': scaler}
 
 
-def robust_scale_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, RobustScaler]:
+def robust_scale_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """对指定列进行鲁棒缩放，对离群值不敏感。"""
     scaler = RobustScaler()
+    message = f"特征 '{column}' 无需处理或非数值类型，跳过鲁棒缩放。"
     if column in df.columns and pd.api.types.is_numeric_dtype(df[column]):
         df[column] = scaler.fit_transform(df[[column]]).ravel()
-    return df, scaler
+        message = f"对数值型特征 '{column}' 应用了鲁棒缩放。"
+    return df, {'message': message, 'fitted_object': scaler}
 
 
-def yeo_johnson_transform_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, PowerTransformer]:
+def yeo_johnson_transform_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """对指定列进行Yeo-Johnson变换，使其更接近正态分布。"""
     pt = PowerTransformer(method='yeo-johnson', standardize=False)
+    message = f"特征 '{column}' 无需处理或非数值类型，跳过Yeo-Johnson变换。"
     if column in df.columns and pd.api.types.is_numeric_dtype(df[column]):
-        # 增加稳定性：确保数据为正数，如果需要
         col_data = df[[column]].astype(float)
-        if (col_data <= 0).any().any():
-            # Yeo-Johnson可以处理0和负值，此检查是为其他可能变换保留
-            pass
         try:
             df[column] = pt.fit_transform(col_data).ravel()
+            message = f"对数值型特征 '{column}' 应用了Yeo-Johnson变换。"
         except Exception:
-            # 若变换失败（例如，在某些极端分布下），则跳过，不影响管道
+            message = f"特征 '{column}' 应用Yeo-Johnson变换失败，跳过操作。"
             pass
-    return df, pt
+    return df, {'message': message, 'fitted_object': pt}
 
 
 # ---------- 类别编码 ----------
-def one_hot_encode_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, OneHotEncoder]:
+def one_hot_encode_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """对指定列进行独热编码。"""
     encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore', dtype=int)
+    message = f"特征 '{column}' 不存在，跳过独热编码。"
     if column in df.columns:
         encoded = encoder.fit_transform(df[[column]])
         encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out([column]), index=df.index)
         df = df.drop(columns=[column])
         df = pd.concat([df, encoded_df], axis=1)
-    return df, encoder
+        message = f"对类别型特征 '{column}' 应用了独热编码。"
+    return df, {'message': message, 'fitted_object': encoder}
 
 
-def label_encode_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, LabelEncoder]:
+def label_encode_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """对指定列进行标签编码。"""
     encoder = LabelEncoder()
+    message = f"特征 '{column}' 不存在，跳过标签编码。"
     if column in df.columns:
-        # 填充NA以进行编码，或将其视为一个单独的类别
         series = df[column]
         if series.isnull().any():
             series = series.astype(str).fillna('__NULL__')
         df[column] = encoder.fit_transform(series)
-    return df, encoder
+        message = f"对类别型特征 '{column}' 应用了标签编码。"
+    return df, {'message': message, 'fitted_object': encoder}
 
 
 def target_encode_column(df: pd.DataFrame, column: str, target_metric_name: str) -> Tuple[
-    pd.DataFrame, ce.TargetEncoder]:
+    pd.DataFrame, Dict[str, Any]]:
     """对指定列进行目标编码。"""
     encoder = ce.TargetEncoder(cols=[column], handle_unknown='value', smoothing=5)
+    message = f"特征 '{column}' 或目标列 '{target_metric_name}' 不存在，跳过目标编码。"
     if column in df.columns and target_metric_name in df.columns:
         df[column] = encoder.fit_transform(X=df[column], y=df[target_metric_name])
-    return df, encoder
+        message = f"对类别型特征 '{column}' 应用了目标编码。"
+    return df, {'message': message, 'fitted_object': encoder}
 
 
-def frequency_encode_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, Dict[str, float]]:
+def frequency_encode_column(df: pd.DataFrame, column: str) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """对指定列进行频率编码。"""
-    if column not in df.columns: return df, {}
-    # dropna=False 将NaN也视为一个可计数的类别
-    counts = df[column].value_counts(normalize=True, dropna=False)
-    freq_map = counts.to_dict()
-    df[column] = df[column].map(freq_map)
-    return df, freq_map
+    message = f"特征 '{column}' 不存在，跳过频率编码。"
+    freq_map = {}
+    if column in df.columns:
+        counts = df[column].value_counts(normalize=True, dropna=False)
+        freq_map = counts.to_dict()
+        df[column] = df[column].map(freq_map)
+        message = f"对类别型特征 '{column}' 应用了频率编码。"
+    return df, {'message': message, 'fitted_object': freq_map}
 
 
 def rare_label_collapse(df: pd.DataFrame, column: str, min_freq: float = 0.01, rare_label: str = "__RARE__") -> Tuple[
-    pd.DataFrame, Dict[str, str]]:
+    pd.DataFrame, Dict[str, Any]]:
     """将指定列中的稀有类别归并为一个标签。"""
-    if column not in df.columns: return df, {}
-    # 同样，将NaN视为一个类别进行判断
-    vc = df[column].value_counts(normalize=True, dropna=False)
-    rare_categories = vc[vc < min_freq].index
-
-    mapping = {cat: rare_label for cat in rare_categories}
-
-    if rare_categories.any():
-        df[column] = df[column].replace(mapping)
-
-    return df, mapping
+    mapping = {}
+    message = f"特征 '{column}' 不存在，跳过稀有标签合并。"
+    if column in df.columns:
+        vc = df[column].value_counts(normalize=True, dropna=False)
+        rare_categories = vc[vc < min_freq].index
+        mapping = {cat: rare_label for cat in rare_categories}
+        if rare_categories.any():
+            df[column] = df[column].replace(mapping)
+            message = f"对类别型特征 '{column}' 的稀有标签进行了合并。"
+        else:
+            message = f"特征 '{column}' 中未发现稀有标签，跳过合并操作。"
+    return df, {'message': message, 'fitted_object': mapping}
 
 
 # ---------- 异常值处理 ----------
-def cap_outliers_iqr(df: pd.DataFrame, column: str, factor: float = 1.5) -> Tuple[pd.DataFrame, None]:
+def cap_outliers_iqr(df: pd.DataFrame, column: str, factor: float = 1.5) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """使用IQR规则对指定列的离群值进行封顶。"""
-    if column not in df.columns or not pd.api.types.is_numeric_dtype(df[column]):
-        return df, None
-
-    col_data = df[column].dropna()
-    if col_data.empty:
-        return df, None
-
-    Q1 = col_data.quantile(0.25)
-    Q3 = col_data.quantile(0.75)
-    IQR = Q3 - Q1
-
-    if IQR == 0:  # 如果IQR为0，则不进行处理
-        return df, None
-
-    lower_bound = Q1 - factor * IQR
-    upper_bound = Q3 + factor * IQR
-
-    df[column] = df[column].clip(lower_bound, upper_bound)
-    return df, None
+    message = f"特征 '{column}' 无需处理或非数值类型，跳过IQR封顶。"
+    if column in df.columns and pd.api.types.is_numeric_dtype(df[column]):
+        col_data = df[column].dropna()
+        if not col_data.empty:
+            Q1 = col_data.quantile(0.25)
+            Q3 = col_data.quantile(0.75)
+            IQR = Q3 - Q1
+            if IQR > 0:
+                lower_bound = Q1 - factor * IQR
+                upper_bound = Q3 - factor * IQR
+                df[column] = df[column].clip(lower_bound, upper_bound)
+                message = f"对数值型特征 '{column}' 的异常值应用了IQR封顶。"
+            else:
+                message = f"特征 '{column}' 的IQR为0，跳过IQR封顶。"
+    return df, {'message': message}
 
 
 def winsorize_by_quantile(df: pd.DataFrame, column: str, lower_q: float = 0.01, upper_q: float = 0.99) -> Tuple[
-    pd.DataFrame, None]:
+    pd.DataFrame, Dict[str, Any]]:
     """使用分位数对指定列进行缩尾处理。"""
-    if column not in df.columns or not pd.api.types.is_numeric_dtype(df[column]):
-        return df, None
-
-    col_data = df[column].dropna()
-    if col_data.empty:
-        return df, None
-
-    lower_limit = col_data.quantile(lower_q)
-    upper_limit = col_data.quantile(upper_q)
-
-    df[column] = df[column].clip(lower_limit, upper_limit)
-    return df, None
+    message = f"特征 '{column}' 无需处理或非数值类型，跳过分位数缩尾。"
+    if column in df.columns and pd.api.types.is_numeric_dtype(df[column]):
+        col_data = df[column].dropna()
+        if not col_data.empty:
+            lower_limit = col_data.quantile(lower_q)
+            upper_limit = col_data.quantile(upper_q)
+            df[column] = df[column].clip(lower_limit, upper_limit)
+            message = f"对数值型特征 '{column}' 的异常值应用了分位数缩尾。"
+    return df, {'message': message}
 
 
 # ---------- 方法映射字典 ----------

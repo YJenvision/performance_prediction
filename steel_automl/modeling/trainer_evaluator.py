@@ -5,13 +5,15 @@ import os
 import joblib
 from datetime import datetime
 import traceback
+import numpy as np
+import shap
 
 from config import DEFAULT_RANDOM_STATE
 from steel_automl.modeling.algorithms.random_forest import RandomForestModel
 from steel_automl.modeling.algorithms.xgboost_model import XGBoostModel
 from steel_automl.modeling.algorithms.lightgbm_model import LightGBMModel
 from steel_automl.results.visualization import plot_prediction_vs_actual, plot_error_distribution, \
-    plot_value_distribution
+    plot_value_distribution, plot_shap_summary_combined
 
 # 模型算法库中模型类映射表
 MODEL_CLASSES = {
@@ -55,6 +57,7 @@ class ModelTrainer:
         self.run_timestamp_str = datetime.now().strftime('%Y%m%d%H%M%S')
         self.current_stage = "模型训练与评估"
         self.run_specific_dir = run_specific_dir
+        self.run_specific_dir_name = os.path.basename(run_specific_dir)
 
         self.model_instance = self.model_class(hyperparameters={})
         self.training_log: List[Dict[str, Any]] = []
@@ -72,39 +75,42 @@ class ModelTrainer:
         """
         metrics, predictions = self.model_instance.evaluate(X_data, y_data, self.acceptable_error)
 
-        # 用于存储Base64编码的图片
-        plots_base64 = {}
+        # 用于存储图片 URL
+        plots_urls = {}
         if predictions is not None and self.acceptable_error and metrics is not None:
             visualization_dir = os.path.join(self.run_specific_dir, "visualization")
-
             # 绘制 预测值 vs 真实值 散点图
-            pred_vs_actual_b64 = plot_prediction_vs_actual(
+            pred_vs_actual_url = plot_prediction_vs_actual(
                 y_true=y_data, y_pred=predictions, acceptable_error=self.acceptable_error,
                 target_metric=self.target_metric, model_name=self.model_name, dataset_name=dataset_name,
                 request_params=self.request_params, timestamp_str=self.run_timestamp_str,
-                output_dir=visualization_dir
+                output_dir=visualization_dir,
+                run_specific_dir_name=self.run_specific_dir_name  # 传递目录名
             )
-            plots_base64["prediction_vs_actual"] = pred_vs_actual_b64
+            plots_urls["prediction_vs_actual"] = pred_vs_actual_url
 
             # 绘制误差分布图
-            error_dist_b64 = plot_error_distribution(
+            error_dist_url = plot_error_distribution(
                 y_true=y_data, y_pred=predictions, acceptable_error=self.acceptable_error,
                 target_metric=self.target_metric, model_name=self.model_name, dataset_name=dataset_name,
                 request_params=self.request_params, timestamp_str=self.run_timestamp_str,
-                output_dir=visualization_dir
+                output_dir=visualization_dir,
+                run_specific_dir_name=self.run_specific_dir_name  # 传递目录名
             )
-            plots_base64["error_distribution"] = error_dist_b64
+            plots_urls["error_distribution"] = error_dist_url
 
             # 绘制真实值与预测值分布对比图
-            value_dist_b64 = plot_value_distribution(
+            value_dist_url = plot_value_distribution(
                 y_true=y_data, y_pred=predictions,
                 target_metric=self.target_metric, model_name=self.model_name, dataset_name=dataset_name,
                 request_params=self.request_params, timestamp_str=self.run_timestamp_str,
-                output_dir=visualization_dir
+                output_dir=visualization_dir,
+                run_specific_dir_name=self.run_specific_dir_name  # 传递目录名
             )
-            plots_base64["value_distribution"] = value_dist_b64
+            plots_urls["value_distribution"] = value_dist_url
 
-            metrics["plots_base64"] = plots_base64
+            # 将 URL 字典附加到指标中
+            metrics["plots_urls"] = plots_urls
 
         if dataset_name == "测试集" and predictions is not None:
             data_dir = os.path.join(self.run_specific_dir, "data")
@@ -122,7 +128,6 @@ class ModelTrainer:
 
     def train_and_evaluate(self, X: pd.DataFrame, y: pd.Series) -> Generator[Dict[str, Any], None, bool]:
         """
-        **核心修改方法**
         执行模型训练、评估、并保存过程产物。
         这是一个生成器，它将每个子任务的结果通过 `substage_result` 消息逐步返回。
         """
@@ -266,9 +271,11 @@ class ModelTrainer:
             # --- 子任务 3.1: 训练集评估 ---
             train_metrics, train_log = self._evaluate_and_visualize(X_train, y_train, "训练集")
             self.evaluation_results["train"] = train_metrics
-            train_metrics_for_log = {k: v for k, v in train_metrics.items() if k != 'plots_base64'}
+            # 从日志中移除大的 URL 字典
+            train_metrics_for_log = {k: v for k, v in train_metrics.items() if k != 'plots_urls'}
             self.training_log.append(
-                {"step": "model_evaluation_train", "status": "success", "details": train_log, "metrics": train_metrics_for_log})
+                {"step": "model_evaluation_train", "status": "success", "details": train_log,
+                 "metrics": train_metrics_for_log})
             yield {"type": "substage_result", "payload": {
                 "stage": self.current_stage, "substage_title": "模型评估 (训练集)",
                 "data": train_metrics
@@ -277,9 +284,11 @@ class ModelTrainer:
             # --- 子任务 3.2: 测试集评估 ---
             test_metrics, test_log = self._evaluate_and_visualize(X_test, y_test, "测试集")
             self.evaluation_results["test"] = test_metrics
-            test_metrics_for_log = {k: v for k, v in test_metrics.items() if k != 'plots_base64'}
+            # 从日志中移除大的 URL 字典
+            test_metrics_for_log = {k: v for k, v in test_metrics.items() if k != 'plots_urls'}
             self.training_log.append(
-                {"step": "model_evaluation_test", "status": "success", "details": test_log, "metrics": test_metrics_for_log})
+                {"step": "model_evaluation_test", "status": "success", "details": test_log,
+                 "metrics": test_metrics_for_log})
             yield {"type": "substage_result", "payload": {
                 "stage": self.current_stage, "substage_title": "模型评估 (测试集)",
                 "data": test_metrics
@@ -292,23 +301,51 @@ class ModelTrainer:
                    "payload": {"stage": self.current_stage, "detail": error_msg + traceback.format_exc()}}
             return False
 
-        # === 子任务 4: 特征重要性提取 ===
-        substage_title_fi = "特征重要性"
+        # === 子任务 4: 特征重要性提取 (已更新为SHAP) ===
+        substage_title_fi = "特征重要性 (SHAP)"
         yield {"type": "status_update",
-               "payload": {"stage": self.current_stage, "status": "running", "detail": "正在提取特征重要性..."}}
+               "payload": {"stage": self.current_stage, "status": "running",
+                           "detail": "正在计算 SHAP 值并生成可视化图..."}}
         fi_log_entry = {"step": substage_title_fi, "model_name": self.model_name}
         fi_result_data = {}
         try:
-            feature_names = X_train.columns.tolist()
-            self.feature_importances = self.model_instance.get_feature_importances(feature_names)
+            if hasattr(self.model_instance, 'get_shap_values'):
+                shap_values = self.model_instance.get_shap_values(X_train)
 
-            if self.feature_importances is not None:
-                fi_log_entry["status"] = "success"
-                # 为了方便JSON序列化和前端展示，转换为字典
-                fi_result_data = self.feature_importances.head(15).to_dict()
+                if shap_values is not None:
+                    # 生成 SHAP 图并获取 URL
+                    shap_plot_url = plot_shap_summary_combined(
+                        shap_values=shap_values,
+                        X=X_train,
+                        model_name=self.model_name,
+                        dataset_name="训练集",
+                        output_dir=os.path.join(self.run_specific_dir, "visualization"),
+                        run_specific_dir_name=self.run_specific_dir_name  # 传递目录名
+                    )
+                    fi_result_data['plots_urls'] = shap_plot_url  # 使用新的键名
+                    fi_log_entry["status"] = "success"
+
+                    mean_abs_shap = np.abs(shap_values).mean(axis=0)
+                    self.feature_importances = pd.Series(mean_abs_shap, index=X_train.columns).sort_values(
+                        ascending=False)
+
+                else:
+                    fi_log_entry["status"] = "failed"
+                    fi_log_entry["error"] = "get_shap_values() returned None."
+                    fi_result_data = {"message": "计算 SHAP 值失败。"}
             else:
-                fi_log_entry["status"] = "not_available"
-                fi_result_data = {"message": "当前模型不支持特征重要性提取。"}
+                # 如果模型不支持SHAP，则回退到旧的特征重要性方法
+                yield {"type": "status_update", "payload": {"stage": self.current_stage, "status": "running",
+                                                            "detail": "模型不支持SHAP，回退到默认特征重要性方法..."}}
+                feature_names = X_train.columns.tolist()
+                self.feature_importances = self.model_instance.get_feature_importances(feature_names)
+
+                if self.feature_importances is not None:
+                    fi_log_entry["status"] = "success_legacy"
+                    fi_result_data = {"feature_importances": self.feature_importances.head(30).to_dict()}
+                else:
+                    fi_log_entry["status"] = "not_available"
+                    fi_result_data = {"message": "当前模型不支持特征重要性提取。"}
 
             self.training_log.append(fi_log_entry)
             yield {"type": "substage_result", "payload": {
@@ -323,7 +360,7 @@ class ModelTrainer:
             # 这不是一个致命错误，因此只发送一个子任务结果，而不是全局错误
             yield {"type": "substage_result", "payload": {
                 "stage": self.current_stage, "substage_title": substage_title_fi,
-                "data": {"status": "失败", "error": error_detail}
+                "data": {"status": "失败", "error": error_detail, "traceback": traceback.format_exc()}
             }}
 
         # 所有步骤成功完成

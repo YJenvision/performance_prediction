@@ -1,9 +1,3 @@
-# @Time    : 2025/8/4 15:08
-# @Author  : ZhangJingLiang
-# @Email   : jinglianglink@qq.com
-# @Project : performance_prediction_agent_stream
-
-
 import lightgbm as lgb
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error, mean_absolute_percentage_error
@@ -14,6 +8,7 @@ from skopt import BayesSearchCV
 from skopt.space import Real, Integer, Categorical
 from scipy.stats import randint, uniform
 from config import DEFAULT_RANDOM_STATE
+import shap
 
 import os
 
@@ -184,4 +179,21 @@ class LightGBMModel:
             return pd.Series(importances, index=feature_names).sort_values(ascending=False)
         else:
             print(f"错误: 模型 {self.model_name} 未训练或不支持特征重要性。")
+            return None
+
+    def get_shap_values(self, X_data: pd.DataFrame) -> Optional[np.ndarray]:
+        """
+        计算并返回给定数据的SHAP值。
+        使用 TreeExplainer 来高效地解释树模型。
+        """
+        if not self.model:
+            print("错误: 模型尚未训练，无法计算SHAP值。")
+            return None
+        try:
+            # TreeExplainer 对于XGBoost和LightGBM是最高效的
+            explainer = shap.TreeExplainer(self.model)
+            shap_values = explainer.shap_values(X_data)
+            return shap_values
+        except Exception as e:
+            print(f"计算SHAP值时发生错误: {e}")
             return None

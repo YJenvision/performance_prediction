@@ -301,12 +301,15 @@ class DataPreprocessor:
             self.applied_steps.append({"step": stage_name, "status": "failed", "error": error_msg})
             return df_processed
         yield {'type': 'status_update',
-               'payload': {'stage': '数据探索与预处理', 'status': 'running', 'detail': '正在执行缺失值处理策略...'}}
+               'payload': {'stage': '数据探索与预处理', 'status': 'running',
+                           'detail': f'正在执行{stage_name}策略...'}}
+
         # 按预定义的顺序遍历所有可能的操作
         for operation_type in self.PROCESSING_ORDER:
             # 遍历所有列，执行当前类型的操作
             for column, steps in plan.items():
-                if column not in df_processed.columns:
+                if column not in df_processed.columns and operation_type not in ['one_hot_encode_column',
+                                                                                 'delete_column']:
                     continue
 
                 for step in steps:
@@ -327,15 +330,26 @@ class DataPreprocessor:
                             result_obj = None
                             if isinstance(result, tuple) and len(result) == 2:
                                 df_processed, result_obj = result
-                                # 新增逻辑：检查返回的是否为执行结果消息
+                                # 检查返回的是否为执行结果消息
                                 if isinstance(result_obj, dict) and 'message' in result_obj:
-                                    yield {
-                                        'type': 'thinking_stream',
-                                        'payload': result_obj['message']}
-                                # 否则，视为拟合对象进行存储
-                                elif result_obj is not None:
+                                    # 根据阶段名称决定返回格式
+                                    if stage_name == "数据精加工":
+                                        yield {
+                                            'type': 'thinking_stream',
+                                            'payload': result_obj['message']}
+                                    else:
+                                        yield {
+                                            'type': 'thinking_stream',
+                                            'payload': result_obj['message']}
+                                    # 如果结果对象只包含消息，则它不是一个拟合对象
+                                    if list(result_obj.keys()) == ['message']:
+                                        result_obj = None
+
+                                # 存储拟合对象
+                                if result_obj is not None:
                                     object_key = f"{column}_{operation_type}"
                                     self.fitted_objects[object_key] = result_obj
+
                             else:
                                 df_processed = result
 
@@ -475,7 +489,7 @@ class DataPreprocessor:
 
         # 阶段5: 数据精加工 (异常/变换/编码/缩放)
         yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "running", "detail": "进入数据精加工阶段..."}}
+               "payload": {"stage": current_stage, "status": "running", "detail": "正在进行数据精加工策略制定..."}}
         profile_after_imputation = generate_data_profile(df_current, self.target_metric)
 
         sys_prompt = get_prompt('preprocessor.final_processing_plan.system', user_request=self.user_request)

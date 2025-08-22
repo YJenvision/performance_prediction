@@ -321,8 +321,8 @@ def performanceModelBuilder(
                "payload": {"stage": current_stage, "status": "success",
                            "detail": f"{chosen_model_name}模型训练和评估成功完成。"}}
 
-        # 7. 结果汇总
-        current_stage = "结果汇总"
+        # 7. 完成
+        current_stage = "完成"
         yield {"type": "status_update",
                "payload": {"stage": current_stage, "status": "running", "detail": "正在汇总最终结果..."}}
 

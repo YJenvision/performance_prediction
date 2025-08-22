@@ -1,8 +1,3 @@
-# @Time    : 2025/7/29 09:16
-# @Author  : ZhangJingLiang
-# @Email   : jinglianglink@qq.com
-# @Project : performance_prediction_agent_stream
-
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -11,6 +6,7 @@ import numpy as np
 from typing import Dict, Union, Any, Tuple
 import io
 import base64
+import shap
 
 
 def _set_plot_style(title: str, xlabel: str, ylabel: str, ax: plt.Axes):
@@ -75,12 +71,12 @@ def plot_prediction_vs_actual(
         dataset_name: str,
         request_params: Dict[str, Any],
         timestamp_str: str,
-        output_dir: str
+        output_dir: str,
+        run_specific_dir_name: str  # 【新增】传入当前运行的顶级目录名
 ) -> str:
     """
     绘制真实值与预测值的对比散点图。
-
-    现在返回 (文件路径, Base64编码的图片字符串)
+    : 现在返回图片的 URL 路径。
     """
     # 创建特定类型的子文件夹
     plot_specific_dir = os.path.join(output_dir, "prediction_vs_actual")
@@ -148,19 +144,16 @@ def plot_prediction_vs_actual(
     filename = _generate_plot_filename(model_name, dataset_name)
     filepath = os.path.join(plot_specific_dir, filename)
 
-    # 1. 保存到文件 (保留原有逻辑)
+    # 1. 保存到文件
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
-
-    # 2. 【新增】保存到内存并转为Base64
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')  # 使用稍低的分辨率以减小传输大小
-    buf.seek(0)
-    image_base64 = base64.b64encode(buf.read()).decode('utf-8')
-    buf.close()
-
     plt.close(fig)
 
-    return image_base64
+    # 2. 构建并返回可访问的 URL 路径
+    # URL 格式: /runs/{run_specific_dir_name}/visualization/prediction_vs_actual/{filename}
+    # 注意：这里使用正斜杠 '/' 来确保 URL 格式正确
+    image_url = f"runs/{run_specific_dir_name}/visualization/prediction_vs_actual/{filename}"
+
+    return image_url
 
 
 def plot_error_distribution(
@@ -172,11 +165,12 @@ def plot_error_distribution(
         dataset_name: str,
         request_params: Dict[str, Any],
         timestamp_str: str,
-        output_dir: str
+        output_dir: str,
+        run_specific_dir_name: str  # 【新增】
 ) -> str:
     """
     绘制预测误差的分布直方图。
-    【修改】: 现在返回 (文件路径, Base64编码的图片字符串)
+    : 现在返回图片的 URL 路径。
     """
     plot_specific_dir = os.path.join(output_dir, "error_distribution")
     os.makedirs(plot_specific_dir, exist_ok=True)
@@ -226,19 +220,12 @@ def plot_error_distribution(
     filename = _generate_plot_filename(model_name, dataset_name)
     filepath = os.path.join(plot_specific_dir, filename)
 
-    # 1. 保存到文件
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
-
-    # 2. 【新增】保存到内存并转为Base64
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
-    buf.seek(0)
-    image_base64 = base64.b64encode(buf.read()).decode('utf-8')
-    buf.close()
-
     plt.close(fig)
 
-    return image_base64
+    # 构建并返回 URL
+    image_url = f"runs/{run_specific_dir_name}/visualization/error_distribution/{filename}"
+    return image_url
 
 
 def plot_value_distribution(
@@ -249,11 +236,12 @@ def plot_value_distribution(
         dataset_name: str,
         request_params: Dict[str, Any],
         timestamp_str: str,
-        output_dir: str
+        output_dir: str,
+        run_specific_dir_name: str  # 【新增】
 ) -> str:
     """
     绘制真实值与预测值的数值分布对比直方图。
-    【修改】: 现在返回 (文件路径, Base64编码的图片字符串)
+    : 现在返回图片的 URL 路径。
     """
     plot_specific_dir = os.path.join(output_dir, "value_distribution")
     os.makedirs(plot_specific_dir, exist_ok=True)
@@ -279,16 +267,56 @@ def plot_value_distribution(
     filename = _generate_plot_filename(model_name, dataset_name)
     filepath = os.path.join(plot_specific_dir, filename)
 
-    # 1. 保存到文件
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
-
-    # 2. 保存到内存并转为Base64
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
-    buf.seek(0)
-    image_base64 = base64.b64encode(buf.read()).decode('utf-8')
-    buf.close()
-
     plt.close(fig)
 
-    return image_base64
+    # 构建并返回 URL
+    image_url = f"runs/{run_specific_dir_name}/visualization/value_distribution/{filename}"
+    return image_url
+
+
+def plot_shap_summary_combined(
+        shap_values: np.ndarray,
+        X: pd.DataFrame,
+        model_name: str,
+        dataset_name: str,
+        output_dir: str,
+        run_specific_dir_name: str  # 【新增】
+) -> str:
+    """
+    绘制组合的SHAP蜂巢图和特征重要性条形图，并返回图片的 URL 路径。
+    """
+    plot_specific_dir = os.path.join(output_dir, "feature_importance")
+    os.makedirs(plot_specific_dir, exist_ok=True)
+
+    plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei']
+    plt.rcParams['axes.unicode_minus'] = False
+
+    max_display = min(30, X.shape[1])
+    fig_height = max(8, max_display * 0.4)
+    fig, ax1 = plt.subplots(figsize=(10, fig_height), dpi=200)
+
+    shap.summary_plot(shap_values, X, plot_type="dot", max_display=max_display, show=False, color_bar=True)
+    ax1 = plt.gca()
+    ax2 = ax1.twiny()
+    shap.summary_plot(shap_values, X, plot_type="bar", max_display=max_display, show=False, color_bar=False)
+
+    for bar in ax2.patches:
+        bar.set_alpha(0.2)
+
+    ax1.set_xlabel('Shapley Value (对模型输出的影响)', fontsize=12)
+    ax2.set_xlabel('Mean |SHAP Value| (平均影响幅度)', fontsize=12)
+    ax2.xaxis.set_label_position('top')
+    ax2.xaxis.tick_top()
+    ax1.set_ylabel('特征', fontsize=12)
+    plt.tight_layout(pad=1.5)
+
+    filename = f"{model_name}_{dataset_name}_SHAP_Combined_Summary.png"
+    filepath = os.path.join(plot_specific_dir, filename)
+
+    plt.savefig(filepath, bbox_inches='tight')
+    plt.close(fig)
+
+    # 构建并返回 URL
+    image_url = f"runs/{run_specific_dir_name}/visualization/feature_importance/{filename}"
+    return image_url
