@@ -86,7 +86,7 @@ class PipelineBuilder:
 
         summary = {
             "pipeline_id": pipeline_id,
-            "user_request": self.user_request_details,
+            "user_intent": self.user_request_details,
             "start_time": self.start_time.isoformat(),
             "end_time": self.end_time.isoformat(),
             "duration_seconds": (self.end_time - self.start_time).total_seconds(),

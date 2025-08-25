@@ -49,7 +49,7 @@ class ResultHandler:
         """
         final_result_package = {
             "status": self.overall_status,
-            "user_request": self.pipeline_summary.get("user_request", {}),
+            "user_intent": self.pipeline_summary.get("user_request", {}),
             "pipeline_run_id": self.pipeline_summary.get("pipeline_id", "N/A"),
             "modeling_start_time": self.pipeline_summary.get("start_time"),
             "modeling_end_time": self.pipeline_summary.get("end_time"),

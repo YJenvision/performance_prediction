@@ -281,7 +281,7 @@ def plot_shap_summary_combined(
         model_name: str,
         dataset_name: str,
         output_dir: str,
-        run_specific_dir_name: str  # 【新增】
+        run_specific_dir_name: str
 ) -> str:
     """
     绘制组合的SHAP蜂巢图和特征重要性条形图，并返回图片的 URL 路径。

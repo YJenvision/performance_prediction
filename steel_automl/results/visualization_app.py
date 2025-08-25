@@ -16,7 +16,7 @@ RUNS_DIRECTORY = os.path.join(parent_parent_dir, "automl_runs")
 # 创建 FastAPI 应用实例
 app = FastAPI(
     title="AutoML Visualization API",
-    description="用于提供 AutoML 运行结果文件的 API 服务",
+    description="用于提供 AutoML 运行可视化结果的 API 服务",
     version="1.0.0"
 )
 

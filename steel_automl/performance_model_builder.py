@@ -56,9 +56,8 @@ def performanceModelBuilder(
     """
     性能预报模型AutoML主流程，生成器。
     """
-    start_time_total = time.time()
     run_timestamp = datetime.now()
-    run_timestamp_str = run_timestamp.strftime('%Y%m%d%H%M%S')
+    run_timestamp_str = run_timestamp.strftime('%Y%m%d%H%M')
     run_dir = "automl_runs"
     os.makedirs(run_dir, exist_ok=True)
 
