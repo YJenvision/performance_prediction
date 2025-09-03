@@ -22,12 +22,28 @@ class ResultHandler:
         self.feature_importances: Optional[pd.Series] = None
         self.overall_status: str = pipeline_summary.get("final_status", "unknown")
 
-    def add_model_details(self, model_name: str, best_hyperparams: Optional[Dict[str, Any]]):
+    def add_model_details(self, model_name: str, best_hyperparams: Optional[Dict[str, Any]],
+                          model_plan: Dict[str, Any]):
         """
-        添加最终选择和训练的模型的详细信息。
+        添加最终选择和训练的模型的详细信息，包括完整的建模计划。
+
+        参数:
+        - model_name: 选定的模型名称。
+        - best_hyperparams: HPO后的最佳超参数。
+        - model_plan: 从selector生成的包含所有决策的计划。
         """
+        # 从 model_plan 中复制 HPO 配置，并移除不可序列化的 cv 对象
+        hpo_config = model_plan.get("hpo_config", {}).copy()
+        if 'cv' in hpo_config:
+            del hpo_config['cv']
+
+        # 构建详细的模型信息字典
         self.final_model_info = {
             "model_name": model_name,
+            "acceptable_error": model_plan.get("acceptable_error"),
+            "data_split_plan": model_plan.get("data_split_plan"),
+            "cv_plan": model_plan.get("cv_plan"),
+            "hpo_config": hpo_config,
             "best_hyperparameters": best_hyperparams
         }
 
@@ -49,15 +65,15 @@ class ResultHandler:
         """
         final_result_package = {
             "status": self.overall_status,
-            "user_intent": self.pipeline_summary.get("user_request", {}),
+            "user_intent": self.pipeline_summary.get("user_intent", {}),
             "pipeline_run_id": self.pipeline_summary.get("pipeline_id", "N/A"),
             "modeling_start_time": self.pipeline_summary.get("start_time"),
             "modeling_end_time": self.pipeline_summary.get("end_time"),
             "modeling_duration_seconds": self.pipeline_summary.get("duration_seconds"),
             "selected_model": self.final_model_info,
             "evaluation_metrics": self.evaluation_metrics,
-            "feature_importances_top10": self.feature_importances.head(
-                10).to_dict() if self.feature_importances is not None and not self.feature_importances.empty else None,
+            "feature_importances_shap_top30": self.feature_importances.head(
+                30).to_dict() if self.feature_importances is not None and not self.feature_importances.empty else None,
             "pipeline_stages_summary": self.pipeline_summary.get("stages", [])
         }
         return {k: v for k, v in final_result_package.items() if v is not None}

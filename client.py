@@ -23,7 +23,7 @@ def stream_automl_response(query: str):
 
 
 if __name__ == "__main__":
-    test_query = "用过去三年Q235B牌号的数据构建一个抗拉强度预报模型，使用lightgbm，设置迭代次数为5次，不要使用Johnson变换，用贝叶斯优化利用R2进行超参数优化，我的可接受误差浮动是正负20以内。"
+    test_query = "用过去3年Q235B牌号的数据构建一个抗拉强度的预报模型，使用lightgbm，使得模型效果尽可能好，用贝叶斯优化利用R2进行超参数优化，我的可接受误差浮动是正负20以内。"
     # test_query = "当前Q235B牌号预测抗拉强度的模型效果怎么样？"
     # test_query = "用过去3年Q235B牌号的数据构建一个抗拉强度预报模型，使用XGboost，用贝叶斯优化利用R2进行超参数优化，尽可能使得模型预测效果好，可以创建一些合理的多项式或者其他交互特征，我的可接受误差浮动是正负20以内。"
     stream_automl_response(test_query)

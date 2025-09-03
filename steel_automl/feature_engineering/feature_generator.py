@@ -34,7 +34,6 @@ class FeatureGenerator:
         self.target_metric = target_metric
         self.preprocessed_columns = preprocessed_columns
         self.fe_kb_service = KnowledgeBaseService(FEATURE_ENGINEERING_KB_NAME)
-        self.applied_steps = []
         self.fitted_objects = {}
 
     def _get_knowledge_snippets_with_metadata(self, context_query: str, k: int = 3) -> str:
@@ -97,13 +96,14 @@ class FeatureGenerator:
             return f"执行一个自定义或未知操作: {operation}"
 
     def _execute_feature_engineering_plan(self, df: pd.DataFrame, plan: List[Dict[str, Any]]) -> Generator[
-        Dict[str, Any], None, pd.DataFrame]:
+        Dict[str, Any], None, Tuple[pd.DataFrame, List[Dict[str, Any]]]]:
         """
-        根据制定的计划执行特征构造步骤，一个生成器，可以流式返回每一步的结果。
+        根据制定的计划执行特征构造步骤，一个生成器，可以流式返回每一步的结果和日志。
         """
         df_engineered = df.copy()
         current_stage = "特征工程"
         total_new_features = []
+        execution_logs = []
 
         yield {"type": "status_update", "payload": {
             "stage": current_stage, "status": "running",
@@ -148,7 +148,7 @@ class FeatureGenerator:
                     "detail": f"执行步骤 '{operation}' 时出错: {e}"
                 }}
 
-            self.applied_steps.append(step_log)
+            execution_logs.append(step_log)
 
         # 在所有步骤执行完毕后，提供一个总结性的成果
         if total_new_features:
@@ -164,15 +164,15 @@ class FeatureGenerator:
                 "data": "特征工程计划已执行，但未生成新的特征列。"
             }}
 
-        return df_engineered
+        return df_engineered, execution_logs
 
     def generate_features(self, df: pd.DataFrame) -> Generator[
-        Dict[str, Any], None, Tuple[DataFrame, List[Dict], Dict]]:
+        Dict[str, Any], None, Tuple[DataFrame, Dict[str, Any], Dict]]:
         """
         执行特征构造的主流程，现在是一个生成器。
         """
         current_stage = "特征工程"
-        self.applied_steps = []
+        self.step_details = {}
         self.fitted_objects = {}
         current_feature_names = [col for col in df.columns if col != self.target_metric]
         current_features_str = ", ".join(current_feature_names)
@@ -181,6 +181,7 @@ class FeatureGenerator:
             "stage": current_stage, "status": "running",
             "detail": "正在分析数据并制定特征构造计划..."
         }}
+        print("当前可操作特征：", current_features_str)
         system_prompt, user_prompt = self._generate_llm_prompt_for_fe_plan(current_features_str)
 
         llm_gen = call_llm(system_prompt, user_prompt, model="ds_v3")
@@ -190,9 +191,9 @@ class FeatureGenerator:
                 chunk = next(llm_gen)
                 if chunk.get("type") == "error":
                     yield chunk
-                    self.applied_steps.append({"step": "llm_generate_fe_plan", "status": "failed",
-                                               "error": "智能体调用失败"})
-                    return df, self.applied_steps, self.fitted_objects
+                    plan_log = {"step": "分析数据并制定特征构造计划", "status": "failed", "error": "智能体调用失败"}
+                    self.step_details["计划制定"] = plan_log
+                    return df, self.step_details, self.fitted_objects
                 yield chunk
             except StopIteration as e:
                 llm_response_str = e.value
@@ -201,23 +202,25 @@ class FeatureGenerator:
         if "Agent failed" in llm_response_str:
             yield {"type": "error",
                    "payload": {"stage": current_stage, "detail": "特征构造计划制定失败：智能体返回错误。"}}
-            self.applied_steps.append({"step": "llm_generate_fe_plan", "status": "failed", "error": "智能体调用失败",
-                                       "raw_response": llm_response_str})
-            return df, self.applied_steps, self.fitted_objects
+            plan_log = {"step": "分析数据并制定特征构造计划", "status": "failed", "error": "智能体调用失败",
+                        "raw_response": llm_response_str}
+            self.step_details["计划制定"] = plan_log
+            return df, self.step_details, self.fitted_objects
 
         feature_engineering_plan = []
         try:
             feature_engineering_plan = json.loads(llm_response_str)
             if not isinstance(feature_engineering_plan, list):
                 raise ValueError("智能体响应不是一个列表。")
-            self.applied_steps.append(
-                {"step": "llm_generate_fe_plan", "status": "success", "plan": feature_engineering_plan})
+            plan_log = {"step": "分析数据并制定特征构造计划", "status": "success", "plan": feature_engineering_plan}
+            self.step_details["计划制定"] = plan_log
         except (json.JSONDecodeError, ValueError) as e:
             error_msg = f"生成的特征构造计划无效: {e}"
             yield {"type": "error", "payload": {"stage": current_stage, "detail": "特征构造计划制定失败：" + error_msg}}
-            self.applied_steps.append(
-                {"step": "llm_generate_fe_plan", "status": "failed", "error": str(e), "raw_response": llm_response_str})
-            return df, self.applied_steps, self.fitted_objects
+            plan_log = {"step": "分析数据并制定特征构造计划", "status": "failed", "error": str(e),
+                        "raw_response": llm_response_str}
+            self.step_details["计划制定"] = plan_log
+            return df, self.step_details, self.fitted_objects
 
         if not feature_engineering_plan or (
                 len(feature_engineering_plan) == 1 and feature_engineering_plan[0].get("operation") == "no_action"):
@@ -226,7 +229,7 @@ class FeatureGenerator:
                 "data": "经智能体评估，当前特征已足够，无需构造新特征。"
             }}
         else:
-            execution_generator = self._execute_feature_engineering_plan(df, feature_engineering_plan)
-            df = yield from execution_generator
+            df, execution_logs = yield from self._execute_feature_engineering_plan(df, feature_engineering_plan)
+            self.step_details["计划执行"] = execution_logs
 
-        return df, self.applied_steps, self.fitted_objects
+        return df, self.step_details, self.fitted_objects

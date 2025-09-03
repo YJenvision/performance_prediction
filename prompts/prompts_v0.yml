@@ -240,25 +240,29 @@ preprocessor:
       ## 可用操作 (按逻辑执行顺序排列)
       1.  **异常值处理 (Outlier Handling)**
           - `winsorize_by_quantile`: 分位数缩尾。用于**偏斜严重**的分布 (看`skewness`)。默认(0.01, 0.99)。
-      2.  **类别编码 (Categorical Encoding)**
+          - `cap_outliers_iqr`: 基于IQR封顶。用于**近似对称**但有离群值的分布。
+      2.  **数据变换 (Transformation)**
+          - `yeo_johnson_transform_column`: Yeo-Johnson变换。用于将**严重偏斜**的数值列转换为更接近正态的分布，对后续的缩放和线性模型有益。
+      3.  **类别编码 (Categorical Encoding)**
           - `rare_label_collapse`: 归并稀有类别。在高基数特征编码前使用，能提升编码器性能。
           - `target_encode_column`: 目标编码。**高基数**类别特征的首选。
           - `one_hot_encode_column`: 独热编码。
           - `label_encode_column`: 标签编码。
           - `frequency_encode_column`: 频率编码。可作为一种备选，有时有奇效。
-      3.  **数值缩放 (Numerical Scaling)**
+      4.  **数值缩放 (Numerical Scaling)**
           - `robust_scale_column`: 鲁棒缩放。当数据**处理后仍有离群值**时使用。
           - `standard_scale_column`: 标准化。最通用的缩放方法，适用于多数情况。
           - `min_max_scale_column`: 归一化。当需要将特征缩放到[0,1]区间时使用。
-      4.  **其他**
+      5.  **其他**
           - `no_action`: 不做任何处理。
 
       ## 决策逻辑
       - **一切都以用户的需求为最高优先级**
       - **数值列 (`numeric`)**:
           1.  检查 `skewness` 和 `outlier_percentage`。
-          2.  如果 `abs(skewness) > 1.5`：优先考虑 `winsorize_by_quantile`。
-          3.  根据用户选择的模型算法的类型，可以选择一个缩放器（也可以不进行缩放操作）。如果用了异常处理，`standard_scale_column` 通常就足够了。如果没处理但怀疑有异常值，用 `robust_scale_column` 更安全。
+          2.  如果 `abs(skewness) > 1.5`：优先考虑 `yeo_johnson_transform_column` 或 `winsorize_by_quantile`。
+          3.  如果 `outlier_percentage` 较高但分布尚可：使用 `cap_outliers_iqr`。
+          4.  根据用户选择的模型算法的类型，可以选择一个缩放器（也可以不进行缩放操作）。如果用了异常处理，`standard_scale_column` 通常就足够了。如果没处理但怀疑有异常值，用 `robust_scale_column` 更安全。
       - **类别列 (`categorical`/`binary`)**:
           1.  检查 `cardinality`。
           2.  `binary`: 直接用 `label_encode_column`。
@@ -274,6 +278,7 @@ preprocessor:
       {{
         "numeric_skewed_feature": [
           {{ "operation": "winsorize_by_quantile", "params": {{"lower_q": 0.01, "upper_q": 0.99}} }},
+          {{ "operation": "yeo_johnson_transform_column" }},
           {{ "operation": "standard_scale_column" }}
         ],
         "categorical_high_card_feature": [

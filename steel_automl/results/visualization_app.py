@@ -34,7 +34,7 @@ app.add_middleware(
 async def serve_run_files(path: str):
     """
     这个路由可以访问每次运行生成的所有文件。
-    例如，URL /runs/20230101120000/visualization/prediction_vs_actual/plot.png
+    例如，URL + /runs/20230101120000/visualization/prediction_vs_actual/plot.png
     将会访问 'automl_runs/20230101120000/visualization/prediction_vs_actual/plot.png'
     """
     file_path = os.path.join(RUNS_DIRECTORY, path)

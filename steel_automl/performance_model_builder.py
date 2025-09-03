@@ -138,7 +138,7 @@ def performanceModelBuilder(
             pipeline_recorder.add_stage(current_stage, "failed", {"details": "数据探索与预处理流程因错误中断。"})
             pipeline_recorder.set_final_status("failed")
             return
-        # 修改点：更新返回值的解包逻辑
+        # 值的解包逻辑
         df_processed, preprocessing_steps, fitted_preproc_objects, preprocessed_data_path = returned_value
 
         preproc_artifacts = {
@@ -163,10 +163,12 @@ def performanceModelBuilder(
                    "payload": {"stage": current_stage, "detail": "经过有效特征筛选和预处理后的数据集为空，流程中止。"}}
             return
 
-        llm_plan_failed = any(
-            step.get("step") == "生成数据预处理计划" and step.get("status") == "failed" for step in preprocessing_steps
-        )
-        if llm_plan_failed:
+        # 检查 "缺失值处理" 和 "数据精加工" 两个子阶段的计划制定是否失败
+        missing_value_plan_log = preprocessing_steps.get("缺失值处理", {}).get("计划制定", {})
+        final_processing_plan_log = preprocessing_steps.get("数据精加工", {}).get("计划制定", {})
+
+        if (missing_value_plan_log.get("status") == "failed" or
+                final_processing_plan_log.get("status") == "failed"):
             critical_preprocessing_failed = True
 
         pipeline_recorder.add_stage(current_stage,
@@ -175,7 +177,8 @@ def performanceModelBuilder(
                                     artifacts=preproc_artifacts)
 
         if critical_preprocessing_failed:
-            yield {"type": "error", "payload": {"stage": current_stage, "detail": "关键预处理步骤失败，流程中止。"}}
+            yield {"type": "error",
+                   "payload": {"stage": current_stage, "detail": "关键预处理步骤（LLM计划制定）失败，流程中止。"}}
             pipeline_recorder.set_final_status("failed")
             return
 
@@ -241,7 +244,7 @@ def performanceModelBuilder(
         returned_value, has_failed = yield from _consume_sub_generator(plan_generator)
 
         if has_failed:
-            pipeline_recorder.add_stage("model_selection_planning", "failed", {"details": "模型选择流程因错误中断。"})
+            pipeline_recorder.add_stage("模型算法选择与计划", "failed", {"details": "模型选择流程因错误中断。"})
             return
 
         automl_plan, model_selection_log = returned_value
@@ -253,16 +256,20 @@ def performanceModelBuilder(
 
         if not automl_plan or "model_recommendations" not in automl_plan or not automl_plan["model_recommendations"]:
             error_msg = "未能生成有效的模型算法计划。"
-            pipeline_recorder.add_stage("model_selection_planning", "failed",
+            pipeline_recorder.add_stage("模型算法选择与计划", "failed",
                                         {"log": model_selection_log, "error": error_msg})
             yield {"type": "error", "payload": {"stage": current_stage, "detail": error_msg}}
             return
 
-        pipeline_recorder.add_stage("model_selection_planning", "success",
-                                    {"model_plan": automl_plan, "log": model_selection_log})
+        # 创建排除user_request_details字段的副本
+        modified_automl_plan = automl_plan.copy()
+        modified_automl_plan.pop("user_request_details", None)
+
+        pipeline_recorder.add_stage("模型算法选择与计划", "success",
+                                    {"model_plan": modified_automl_plan, "log": model_selection_log})
 
         yield {"type": "status_update",
-               "payload": {"stage": current_stage, "status": "success", "detail": "完成模型选择与计划制定。"}}
+               "payload": {"stage": current_stage, "status": "success", "detail": "完成模型算法选择与计划制定。"}}
 
         # 5. Pipeline构建
         plan_details = automl_plan["model_plan"]
@@ -270,17 +277,7 @@ def performanceModelBuilder(
         chosen_model_name = list(model_recommendations.keys())[0]
         chosen_model_info = model_recommendations[chosen_model_name]
 
-        # 从新的计划结构中提取信息
-        data_split_plan = plan_details.get("data_split_plan", {"method": "sequential", "test_size": 0.2})
-        cv_plan = plan_details.get("cv_plan", {"method": "time_series", "k_folds": 3})
-        hpo_config = plan_details.get("hpo_config", {"method": "RandomizedSearchCV", "n_iter": 30})
-
         pipeline_recorder.set_model_name(chosen_model_name)
-        pipeline_recorder.add_stage("decision_making", "success",
-                                    {"chosen_model": chosen_model_name,
-                                     "data_split_plan": data_split_plan,
-                                     "cv_plan": cv_plan,
-                                     "hpo_config": hpo_config})
 
         # 6. 模型训练与评估
         current_stage = "模型训练与评估"
@@ -296,7 +293,7 @@ def performanceModelBuilder(
 
         if has_failed or not training_succeeded:
             error_msg = "模型训练和评估流程失败。"
-            pipeline_recorder.add_stage("model_training_evaluation", "failed",
+            pipeline_recorder.add_stage("模型训练与评估", "failed",
                                         {"training_log": trainer.training_log, "error": error_msg})
             pipeline_recorder.set_final_status("failed")
             # 训练器应该已经给出了错误消息
@@ -312,7 +309,7 @@ def performanceModelBuilder(
             key: value for key, value in trainer.evaluation_results.items() if key != "artifacts"
         }
 
-        pipeline_recorder.add_stage("model_training_evaluation", "success",
+        pipeline_recorder.add_stage("模型训练与评估", "success",
                                     {"training_log": trainer.training_log, "evaluation_metrics": evaluation_results},
                                     artifacts=training_artifacts)
 
@@ -328,10 +325,14 @@ def performanceModelBuilder(
         pipeline_recorder.set_final_status("success")
         result_handler = ResultHandler(pipeline_summary=pipeline_recorder.get_pipeline_summary(),
                                        run_specific_dir=run_specific_dir)
+
+        # 调用 add_model_details 时传入完整的 model_plan
         result_handler.add_model_details(
             model_name=chosen_model_name,
-            best_hyperparams=trainer.model_instance.best_params_ if trainer.model_instance else None
+            best_hyperparams=trainer.model_instance.best_params_ if trainer.model_instance else None,
+            model_plan=automl_plan.get("model_plan", {})
         )
+
         result_handler.add_evaluation_metrics(metrics=trainer.evaluation_results)
         result_handler.add_feature_importances(importances=trainer.feature_importances)
         result_handler.save_final_result()

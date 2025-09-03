@@ -61,7 +61,7 @@ class ModelTrainer:
 
         self.model_instance = self.model_class(hyperparameters={})
         self.training_log: List[Dict[str, Any]] = []
-        self.evaluation_results: Dict[str, Any] = {"train": None, "test": None, "artifacts": {}}
+        self.evaluation_results: Dict[str, Any] = {"train": None, "test": None, "shap": None, "artifacts": {}}
         self.trained_model_object = None
         self.feature_importances: Optional[pd.Series] = None
 
@@ -148,7 +148,7 @@ class ModelTrainer:
                 split_index = int(len(X) * (1 - test_size))
                 X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
                 y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]
-                log_entry["detail"] = "Data was split sequentially."
+                log_entry["detail"] = "数据集被顺序划分。"
             else:  # 'random'
                 X_train, X_test, y_train, y_test = train_test_split(
                     X, y, test_size=test_size, random_state=DEFAULT_RANDOM_STATE
@@ -193,13 +193,13 @@ class ModelTrainer:
                 cv = KFold(n_splits=k_folds, shuffle=True, random_state=DEFAULT_RANDOM_STATE)
                 cv_detail_msg = f"使用随机{k_folds}折交叉验证。"
 
-            self.training_log.append({"step": "cv_setup", "status": "success", "plan": self.cv_plan})
+            self.training_log.append({"step": "交叉验证方法设置", "status": "success", "plan": self.cv_plan})
             yield {"type": "substage_result", "payload": {
                 "stage": self.current_stage, "substage_title": "交叉验证策略",
                 "data": {"detail": cv_detail_msg}
             }}
         except Exception as e:
-            self.training_log.append({"step": "cv_setup", "status": "failed", "error": str(e)})
+            self.training_log.append({"step": "交叉验证方法设置", "status": "failed", "error": str(e)})
             error_msg = f"设置交叉验证策略失败: {e}"
             yield {"type": "error",
                    "payload": {"stage": self.current_stage, "detail": error_msg + traceback.format_exc()}}
@@ -249,7 +249,7 @@ class ModelTrainer:
             joblib.dump(self.trained_model_object, filepath)
 
             self.evaluation_results["artifacts"]["model_path"] = filepath
-            self.training_log.append({"step": "model_saving", "status": "success", "path": filepath})
+            self.training_log.append({"step": "模型文件保存", "status": "success", "path": filepath})
 
             yield {"type": "status_update", "payload": {"stage": self.current_stage, "status": "running",
                                                         "detail": "正在保存模型文件..."}}
@@ -274,7 +274,7 @@ class ModelTrainer:
             # 从日志中移除大的 URL 字典
             train_metrics_for_log = {k: v for k, v in train_metrics.items() if k != 'plots_urls'}
             self.training_log.append(
-                {"step": "model_evaluation_train", "status": "success", "details": train_log,
+                {"step": "模型评估_训练集", "status": "success", "details": train_log,
                  "metrics": train_metrics_for_log})
             yield {"type": "substage_result", "payload": {
                 "stage": self.current_stage, "substage_title": "模型评估 (训练集)",
@@ -287,7 +287,7 @@ class ModelTrainer:
             # 从日志中移除大的 URL 字典
             test_metrics_for_log = {k: v for k, v in test_metrics.items() if k != 'plots_urls'}
             self.training_log.append(
-                {"step": "model_evaluation_test", "status": "success", "details": test_log,
+                {"step": "模型评估_测试集", "status": "success", "details": test_log,
                  "metrics": test_metrics_for_log})
             yield {"type": "substage_result", "payload": {
                 "stage": self.current_stage, "substage_title": "模型评估 (测试集)",
@@ -320,10 +320,11 @@ class ModelTrainer:
                         model_name=self.model_name,
                         dataset_name="训练集",
                         output_dir=os.path.join(self.run_specific_dir, "visualization"),
-                        run_specific_dir_name=self.run_specific_dir_name  # 传递目录名
+                        run_specific_dir_name=self.run_specific_dir_name
                     )
-                    fi_result_data['plots_urls'] = shap_plot_url  # 使用新的键名
+                    fi_result_data['plots_urls'] = shap_plot_url
                     fi_log_entry["status"] = "success"
+                    self.evaluation_results["shap"] = fi_result_data
 
                     mean_abs_shap = np.abs(shap_values).mean(axis=0)
                     self.feature_importances = pd.Series(mean_abs_shap, index=X_train.columns).sort_values(

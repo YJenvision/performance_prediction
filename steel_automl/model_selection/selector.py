@@ -227,7 +227,7 @@ class ModelSelector:
                 acceptable_error, error_log_msg = e.value
                 break
 
-        log.append({"step": "determine_acceptable_error", "details": error_log_msg})
+        log.append({"step": "可接受误差范围确定", "details": error_log_msg})
 
         if not acceptable_error:
             yield {"type": "status_update",
@@ -264,7 +264,7 @@ class ModelSelector:
 
         if agent_failed or "Agent failed" in llm_response_str:
             error_msg = "智能体在生成计划时失败。"
-            log.append({"step": "llm_generate_plan", "status": "failed", "error": error_msg})
+            log.append({"step": "模型算法选择与计划", "status": "failed", "error": error_msg})
             final_plan = self._get_default_plan(error_msg, acceptable_error)
             log.append({"step": "fallback_plan_activated", "status": "success"})
             return final_plan, log
@@ -289,11 +289,11 @@ class ModelSelector:
             final_plan = {"model_plan": parsed_response["model_plan"], "model_recommendations": valid_recommendations}
             # 确保可接受误差被正确地设置在最终计划中
             final_plan["model_plan"]["acceptable_error"] = acceptable_error
-            log.append({"step": "llm_generate_plan", "status": "success", "plan": final_plan})
+            log.append({"step": "模型算法选择与计划", "status": "success", "plan": final_plan})
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             error_msg = f"智能体解析或验证响应失败: {e}"
             log.append(
-                {"step": "llm_generate_plan", "status": "failed", "error": error_msg, "raw_response": llm_response_str})
+                {"step": "模型算法选择与计划", "status": "failed", "error": error_msg, "raw_response": llm_response_str})
             final_plan = self._get_default_plan(error_msg, acceptable_error)
             log.append({"step": "fallback_plan_activated", "status": "success"})
 

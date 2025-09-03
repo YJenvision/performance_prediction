@@ -17,7 +17,7 @@ QWEN_PLUS_API_KEY = "xin3plat-cqBYQ4qdPB8QjK5d9CPqwx1lJeazJGZd5g9xVFxqr9sHvvWHb8
 
 
 # EMBEDDING_API_URL = r"http://acv-gydn.baocloud.cn/embeddingbge/embed_string_m3/"
-EMBEDDING_API_URL = r"http://localhost:8000/embedding"  # 本地bge_m3部署
+EMBEDDING_API_URL = r"http://localhost:8000/embedding"
 
 # 知识库文件路径
 KB_DIR = os.path.join(os.path.dirname(__file__), "knowledge_base", "vector_stores")
