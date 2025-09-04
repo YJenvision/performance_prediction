@@ -51,7 +51,7 @@ def _save_dataframe(df: pd.DataFrame, data_type_name: str, run_specific_dir: str
     """
     if df is None or df.empty:
         return ""
-    # MODIFIED: 基于传入的专属运行目录构建 'data' 子目录
+    # 基于传入的专属运行目录构建 'data' 子目录
     data_dir = os.path.join(run_specific_dir, 'data')
     os.makedirs(data_dir, exist_ok=True)
     filename = _generate_data_filename(data_type_name)
@@ -64,7 +64,7 @@ def _save_dataframe(df: pd.DataFrame, data_type_name: str, run_specific_dir: str
 def _save_fitted_objects(objects: Dict[str, Any], run_specific_dir: str, object_type: str) -> str:
     """
     使用pickle保存拟合的对象到指定运行目录的相应子目录中。
-    这些对象对于在部署后转换新数据至关重要。
+    这些对象用于在部署后转换新数据。
 
     参数:
     - objects: 包含已拟合转换器的字典。

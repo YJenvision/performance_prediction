@@ -12,8 +12,7 @@ from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 import shap
 
 try:
-    import torch
-
+    # import torch
     # IS_CUDA_AVAILABLE = torch.cuda.is_available()
     # 使用GPU训练和预测的情况下，模型在GPU上，数据在CPU上，导致数据交换成本过高，导致效率变慢，目前Windows解决失败，Linux计划使用cudf解决。
 

@@ -108,6 +108,7 @@ class DataLoader:
 
             return True
         except Exception as e:
+            print(e)
             self._disconnect()
             return False
 

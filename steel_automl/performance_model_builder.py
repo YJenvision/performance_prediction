@@ -333,6 +333,16 @@ def performanceModelBuilder(
             model_plan=automl_plan.get("model_plan", {})
         )
 
+        # 区分原始特征和新构造特征，并传递给ResultHandler
+        original_features = preprocessed_feature_cols
+        all_model_features = list(X.columns)
+        newly_created_features = [f for f in all_model_features if f not in original_features]
+
+        result_handler.add_features_info(
+            original_features=original_features,
+            newly_created_features=newly_created_features
+        )
+
         result_handler.add_evaluation_metrics(metrics=trainer.evaluation_results)
         result_handler.add_feature_importances(importances=trainer.feature_importances)
         result_handler.save_final_result()

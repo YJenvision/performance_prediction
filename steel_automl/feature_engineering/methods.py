@@ -73,7 +73,7 @@ def create_polynomial_features(df: pd.DataFrame, columns: List[str], degree: int
         raise ValueError(f"列 {missing_cols} 不在DataFrame中，无法创建多项式特征。")
 
     poly = PolynomialFeatures(degree=degree, interaction_only=interaction_only, include_bias=False)
-    data_for_poly = df[columns].fillna(0)  # 简单填充，应在预处理中完成
+    data_for_poly = df[columns].fillna(0)  # 简单静默填充
     poly_features = poly.fit_transform(data_for_poly)
     poly_feature_names = poly.get_feature_names_out(input_features=columns)
 

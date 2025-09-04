@@ -19,6 +19,7 @@ class ResultHandler:
         self.run_specific_dir = run_specific_dir  # 保存专属运行目录
         self.final_model_info: Optional[Dict[str, Any]] = None
         self.evaluation_metrics: Optional[Dict[str, float]] = None
+        self.features_info: Optional[Dict[str, List[str]]] = None  # 用于存储特征信息
         self.feature_importances: Optional[pd.Series] = None
         self.overall_status: str = pipeline_summary.get("final_status", "unknown")
 
@@ -59,6 +60,15 @@ class ResultHandler:
         """
         self.feature_importances = importances
 
+    def add_features_info(self, original_features: List[str], newly_created_features: List[str]):
+        """
+        添加用于模型训练的原始特征和新构造特征的列表。
+        """
+        self.features_info = {
+            "original_features": original_features,
+            "newly_created_features": newly_created_features
+        }
+
     def compile_final_result(self) -> Dict[str, Any]:
         """
         汇编所有结果信息。
@@ -71,6 +81,7 @@ class ResultHandler:
             "modeling_end_time": self.pipeline_summary.get("end_time"),
             "modeling_duration_seconds": self.pipeline_summary.get("duration_seconds"),
             "selected_model": self.final_model_info,
+            "features": self.features_info,
             "evaluation_metrics": self.evaluation_metrics,
             "feature_importances_shap_top30": self.feature_importances.head(
                 30).to_dict() if self.feature_importances is not None and not self.feature_importances.empty else None,

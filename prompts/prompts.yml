@@ -194,18 +194,16 @@ preprocessor:
       ## 可用操作
       - **删除列**: `delete_column` (用于缺失率过高，如 > 40%，或业务上已无意义的列)
       - **自动填充**: `impute_auto` (推荐！它会智能地根据数值列的偏度选择均值或中位数，对类别列使用众数)
-      - **添加缺失指示器**: `add_missing_indicator` (可选，为树模型提供额外信息，通常与填充操作配合使用)
       - **删除行**: `delete_rows_with_missing_in_column` (仅用于缺失率极低 < 1-2%，且样本量巨大的情况)
       - **不处理**: `no_action` (如果某列没有缺失值)
 
       ## 决策逻辑
       1.  **检视 `missing_percentage`**:
           - **高缺失 (> 40%)**: 优先考虑 `delete_column`。
-          - **中等缺失 (5% - 40%)**: 最佳选择是 `impute_auto`。可以考虑额外添加 `add_missing_indicator`。
+          - **中等缺失 (5% - 40%)**: 最佳选择是 `impute_auto`。
           - **低缺失 (< 5%)**: `impute_auto` 是安全的选择。
       2.  **参考 `type` 和 `stats`**:
           - `impute_auto` 已经为你处理了数值型（numeric）和类别型（categorical）的区别。你只需决定是否使用它。
-          - 对于重要的特征，即使缺失率中等，也可以组合使用 `impute_auto` 和 `add_missing_indicator`，以保留缺失信息本身。
 
       ## 输出格式
       请首先在<think>和</think>标签中以逻辑清晰的一个段落形式详细展示你对本次回答任务的完整分析过程，确保用户能够清楚了解你对本次任务的思考路径、决策过程及最终的结果，然后严格以JSON格式返回计划。键是列名，值是操作列表。**只规划包含缺失值的列**。
@@ -214,10 +212,6 @@ preprocessor:
       {{
         "feature_high_missing": [
           {{ "operation": "delete_column" }}
-        ],
-        "feature_moderate_missing_numeric": [
-          {{ "operation": "add_missing_indicator" }},
-          {{ "operation": "impute_auto" }}
         ],
         "feature_low_missing_categorical": [
           {{ "operation": "impute_auto" }}
