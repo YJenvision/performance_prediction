@@ -11,13 +11,13 @@ OPENAI_API_BASE_QWEN = "http://acv-gydn.baocloud.cn/qwen2_5_vllm/v1"
 OPENAI_API_KEY_QWEN = "none"
 LLM_MODEL_NAME_QWEN = "Qwen2.5-72B-Instruct-AWQ"
 
-# 新增 qwen_plus 模型配置
+# 新增 qwen_plus 模型配置(平台建议不使用)
 QWEN_PLUS_URL = "https://ds.baocloud.cn/xin3plat/api/v1/chat/completions"
 QWEN_PLUS_API_KEY = "xin3plat-cqBYQ4qdPB8QjK5d9CPqwx1lJeazJGZd5g9xVFxqr9sHvvWHb8EwRmVdAVPB"
 
 
 # EMBEDDING_API_URL = r"http://acv-gydn.baocloud.cn/embeddingbge/embed_string_m3/"
-EMBEDDING_API_URL = r"http://localhost:8000/embedding"
+EMBEDDING_API_URL = r"http://10.25.229.83:8000/embedding"
 
 # 知识库文件路径
 KB_DIR = os.path.join(os.path.dirname(__file__), "knowledge_base", "vector_stores")
